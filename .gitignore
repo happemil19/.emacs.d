@@ -1,0 +1,10 @@
+/.cache/
+/auto-save-list/
+/elpa/
+/eshell/
+/places
+/projectile-bookmarks.eld
+/tramp
+/transient/
+*.eln
+*.elc
