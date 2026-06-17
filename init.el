@@ -36,23 +36,41 @@
       (package-refresh-contents))
     (package-install pkg)))
 
-;; Theme + highlight current line (cursor position is easier to see).
+;; Theme + highlight current line and the active window in splits.
 (my/ensure-package 'gruvbox-theme)
 (load-theme 'gruvbox-dark-medium t)
 
 (global-hl-line-mode 1)
 (setq hl-line-sticky-flag t)
-(blink-cursor-mode -1)
+
+;; Active window: blinking cursor.  Others: no cursor at all.
+(setq cursor-in-non-selected-windows nil)
+(blink-cursor-mode 1)
+(setq blink-cursor-delay 0.5)
+(setq blink-cursor-interval 0.5)
 
 (custom-set-faces
  ;; Near-white block on dark Gruvbox — high contrast at point.
  '(cursor ((t (:background "#fbf1c7" :foreground "#1d2021" :weight ultra-bold))))
  '(hl-line ((t (:background "#504945" :extend t))))
  '(line-number-current
-   ((t (:foreground "#fbf1c7" :background "#504945" :weight bold)))))
+   ((t (:foreground "#fbf1c7" :background "#504945" :weight bold))))
+ ;; Active window: brighter mode line + Gruvbox orange bar on top.
+ '(mode-line
+   ((t (:background "#504945" :foreground "#fbf1c7"
+                  :box (:line-width 3 :color "#fe8019")))))
+ '(mode-line-inactive
+   ((t (:background "#282828" :foreground "#665c54"
+                  :box (:line-width 1 :color "#3c3836")))))
+ '(window-divider ((t (:foreground "#504945")))))
 
 (setq display-line-numbers-type 'relative)
 (global-display-line-numbers-mode 1)
+
+;; Subtle lines between split windows (does not mark the active one).
+(window-divider-mode 1)
+(setq window-divider-default-places '(bottom-only right-only))
+(setq window-divider-width 2)
 
 ;; Size for new GUI frames.  Must be set before a display exists (emacs
 ;; --fg-daemon loads init with (display-graphic-p) nil).
