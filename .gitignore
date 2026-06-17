@@ -1,5 +1,7 @@
 /.cache/
 /auto-save-list/
+/.emacs.desktop
+/.emacs.desktop.lock
 /elpa/
 /eshell/
 /places

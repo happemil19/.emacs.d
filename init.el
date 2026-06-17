@@ -1,7 +1,7 @@
 ;;; init.el --- Minimal Emacs config  -*- lexical-binding: t; -*-
 
 ;; Goal: keep the configuration as small and reproducible as possible.
-;; We keep Speech Dispatcher (RHVoice) support as the primary feature.
+;; Primary UI: emacs --fg-daemon + emacsclient -c (GUI).  RHVoice via speechd-el.
 
 ;; Basic UX: less GUI noise.
 (tooltip-mode -1)
@@ -10,6 +10,8 @@
 (scroll-bar-mode -1)
 (setq use-dialog-box nil)
 (setq ring-bell-function 'ignore)
+;; emacsclient -c with no files: skip "When done with this frame…" in *Messages*.
+(setq server-client-instructions nil)
 
 ;; UTF-8 everywhere.
 (set-language-environment 'UTF-8)
@@ -204,7 +206,7 @@
 (add-hook 'python-mode-hook #'my/eglot-ensure)
 (add-hook 'python-ts-mode-hook #'my/eglot-ensure)
 
-;; Persistence: auto-save, backups, point positions, and minibuffer history.
+;; Persistence: auto-save, backups, session restore, cursor & history.
 (setq auto-save-default t)
 (setq auto-save-timeout 5)
 (setq auto-save-interval 200)
@@ -213,6 +215,150 @@
 (setq version-control t)
 (setq delete-old-versions t)
 (setq kept-old-versions 5)
+
+;; Desktop session: ~/.emacs.d/.emacs.desktop
+;; With `emacs --daemon', enable desktop-save on the first emacsclient -c frame.
+;; desktop-read must run with that client frame *selected*; otherwise
+;; `desktop-restoring-frameset-p' is nil and only *scratch* comes back.
+(setq desktop-path (list user-emacs-directory))
+(setq desktop-prompt-restore 'yes)
+(setq desktop-save t)
+(setq desktop-autosave-interval 300)
+(setq desktop-restore-reuses-frames t)
+
+(defvar my/desktop--enabled nil)
+(defvar my/desktop--after-restored nil)
+
+(defun my/desktop-hide-frame (frame)
+  (when (and frame (frame-live-p frame) (display-graphic-p frame))
+    (modify-frame-parameters frame '((visibility . nil)))))
+
+(defun my/desktop-show-frame (frame)
+  (when (and frame (frame-live-p frame) (display-graphic-p frame))
+    (modify-frame-parameters frame '((visibility . t)))
+    (raise-frame frame)))
+
+(defun my/desktop-show-frame-ready (frame)
+  "Show FRAME on the next idle tick, after splits and faces are painted."
+  (run-with-idle-timer
+   0 nil
+   (lambda ()
+     (when (frame-live-p frame)
+       (select-frame frame)
+       (redisplay t)
+       (my/desktop-show-frame frame)))))
+
+(defun my/desktop-client-frame-params-p (params)
+  (and params (plist-member params 'client)
+       (not (plist-get params 'terminal))))
+
+(defun my/desktop-make-frame-invisible (orig &rest args)
+  "Create emacsclient GUI frames hidden when a desktop session will load."
+  (let ((params (car args)))
+    (when (and (daemonp)
+               (not my/desktop--enabled)
+               (file-exists-p (my/desktop-file))
+               (my/desktop-client-frame-params-p params))
+      (setf (car args) (append params '((visibility . nil)))))
+    (apply orig args)))
+
+(defun my/desktop-hide-client-frame (frame)
+  "Hide the emacsclient scratch frame until desktop restore finishes."
+  (when (and (daemonp)
+             (not my/desktop--enabled)
+             (display-graphic-p frame)
+             (frame-parameter frame 'client)
+             (file-exists-p (my/desktop-file)))
+    (my/desktop-hide-frame frame)))
+
+(defun my/desktop-gui-frames ()
+  (let (frames)
+    (dolist (frame (frame-list))
+      (when (display-graphic-p frame)
+        (push frame frames)))
+    frames))
+
+(defun my/desktop-best-gui-frame (frames)
+  "Return the GUI frame with the most windows."
+  (let (best best-n)
+    (dolist (frame frames)
+      (let ((n (length (window-list frame))))
+        (when (> n (or best-n 0))
+          (setq best frame best-n n))))
+    (or best (car frames))))
+
+(defun my/desktop-scratch-frame-p (frame)
+  (and frame
+       (= (length (window-list frame)) 1)
+       (string= (buffer-name (window-buffer (frame-root-window frame)))
+                "*scratch*")))
+
+(defun my/desktop-frames-on-screen ()
+  "Move GUI frames onto the visible display (desktop can save off-screen coords)."
+  (dolist (frame (my/desktop-gui-frames))
+    (let ((pos (frame-position frame)))
+      (when (>= (car pos) 1600)
+        (set-frame-position frame 100 100)))))
+
+(defun my/desktop-after-restore ()
+  "Raise the restored GUI frame; drop leftover tty/scratch frames."
+  (unless my/desktop--after-restored
+    (setq my/desktop--after-restored t)
+    (my/desktop-frames-on-screen)
+    (dolist (frame (frame-list))
+      (when (and (not (display-graphic-p frame))
+                 (not (eq (frame-parameter frame 'minibuffer) 'only)))
+        (ignore-errors (delete-frame frame))))
+    (let* ((gui-frames (my/desktop-gui-frames))
+           (best-frame (my/desktop-best-gui-frame gui-frames)))
+      (dolist (frame gui-frames)
+        (when (and (not (eq frame best-frame))
+                   (my/desktop-scratch-frame-p frame))
+          (ignore-errors (delete-frame frame))))
+      (when best-frame
+        (ignore-errors
+          (my/desktop-show-frame-ready best-frame))))))
+
+(defun my/desktop-file ()
+  (expand-file-name ".emacs.desktop" user-emacs-directory))
+
+(defun my/desktop-clear-stale-lock ()
+  "Remove a leftover lock from a dead Emacs process."
+  (let ((lockfile (expand-file-name ".emacs.desktop.lock" user-emacs-directory)))
+    (when (file-exists-p lockfile)
+      (let ((owner (ignore-errors
+                     (string-to-number (string-trim (file-string lockfile))))))
+        (unless (and owner (= owner (emacs-pid)))
+          (delete-file lockfile))))))
+
+(defun my/desktop-enable (&optional client-frame)
+  (unless my/desktop--enabled
+    (setq my/desktop--enabled t)
+    (setq my/desktop--after-restored nil)
+    (my/desktop-clear-stale-lock)
+    (setq desktop-save-mode nil)
+    (desktop-save-mode 1)
+    (add-hook 'desktop-after-read-hook #'my/desktop-after-restore)
+    (when (and client-frame (file-exists-p (my/desktop-file)))
+      (select-frame client-frame)
+      (my/desktop-hide-frame client-frame))
+    (when (file-exists-p (my/desktop-file))
+      (unwind-protect
+          (let ((inhibit-redisplay t))
+            (desktop-read))
+        (unless my/desktop--after-restored
+          (my/desktop-show-frame-ready (or client-frame (selected-frame))))))))
+
+(defun my/desktop-enable-server-frame ()
+  (when (display-graphic-p (selected-frame))
+    (my/desktop-enable (selected-frame))))
+
+(with-eval-after-load 'server
+  (advice-add #'make-frame :around #'my/desktop-make-frame-invisible)
+  (add-hook 'server-after-make-frame-hook #'my/desktop-enable-server-frame)
+  (add-hook 'after-make-frame-functions #'my/desktop-hide-client-frame))
+(when (and (display-graphic-p) (not noninteractive) (not (daemonp)))
+  (my/desktop-enable))
 
 (save-place-mode 1)
 
