@@ -119,6 +119,28 @@
 (require 'magit)
 (global-set-key (kbd "C-x g") #'magit-status)
 
+;; Git change markers in the fringe while editing (diff-hl).
+(my/ensure-package 'diff-hl)
+(require 'diff-hl)
+(global-diff-hl-mode 1)
+(add-hook 'after-save-hook #'diff-hl-update)
+(with-eval-after-load 'magit
+  (add-hook 'magit-post-refresh-hook #'diff-hl-magit-post-refresh))
+
+(defvar my/diff-hl--update-timer nil
+  "Idle timer for debounced `diff-hl-update'.")
+
+(defun my/diff-hl-update-debounced (&rest _)
+  "Refresh fringe markers shortly after buffer edits."
+  (when (timerp my/diff-hl--update-timer)
+    (cancel-timer my/diff-hl--update-timer))
+  (setq my/diff-hl--update-timer
+        (run-with-idle-timer 0.35 nil #'diff-hl-update)))
+
+(add-hook 'diff-hl-mode-hook
+          (lambda ()
+            (add-hook 'after-change-functions #'my/diff-hl-update-debounced nil t)))
+
 (setq python-indent-offset 4)
 (setq-default indent-tabs-mode nil)
 
