@@ -204,6 +204,23 @@
 (add-hook 'python-mode-hook #'my/eglot-ensure)
 (add-hook 'python-ts-mode-hook #'my/eglot-ensure)
 
+;; Persistence: auto-save, backups, point positions, and minibuffer history.
+(setq auto-save-default t)
+(setq auto-save-timeout 5)
+(setq auto-save-interval 200)
+
+(setq make-backup-files t)
+(setq version-control t)
+(setq delete-old-versions t)
+(setq kept-old-versions 5)
+
+(save-place-mode 1)
+
+(savehist-mode 1)
+(setq history-length 1000)
+
+(setq confirm-kill-processes t)
+
 ;; Org (built-in).
 (require 'org)
 
