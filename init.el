@@ -144,15 +144,65 @@
 (setq python-indent-offset 4)
 (setq-default indent-tabs-mode nil)
 
-(defun my/eglot-ensure ()
-  "Start Eglot when a Python LSP server is on PATH."
-  (when (or (executable-find "pylsp")
-            (executable-find "pyright-langserver")
-            (executable-find "pyright"))
+(defun my/pylsp-executable ()
+  "Return a real pylsp binary, not a pyenv shim that fails under local .python-version."
+  (let* ((pyenv-root (or (getenv "PYENV_ROOT")
+                         (expand-file-name "~/.pyenv")))
+         (candidates
+          (list (expand-file-name "versions/3.14-dev/envs/global-venv/bin/pylsp"
+                                  pyenv-root)
+                (expand-file-name "versions/global-venv/bin/pylsp" pyenv-root)
+                (expand-file-name "~/.local/bin/pylsp"))))
+    (or (seq-find #'file-executable-p candidates)
+        (let ((default-directory (getenv "HOME")))
+          (executable-find "pylsp")))))
+
+(defun my/python-project-venv ()
+  "Return project `.venv' or `venv' directory when present."
+  (when-let ((root (locate-dominating-file
+                    default-directory
+                    (lambda (dir)
+                      (or (file-directory-p (expand-file-name ".venv" dir))
+                          (file-directory-p (expand-file-name "venv" dir)))))))
+    (or (and (file-directory-p (expand-file-name ".venv" root))
+             (expand-file-name ".venv" root))
+        (expand-file-name "venv" root))))
+
+(defun my/eglot-configure-python-server ()
+  "Register pylsp for Python modes; bypass pyenv shims."
+  (when-let ((pylsp (my/pylsp-executable)))
     (require 'eglot)
-    (eglot-ensure)))
+    (setq eglot-server-programs
+          (cons `((python-mode python-ts-mode) ,pylsp)
+                (cl-remove-if
+                 (lambda (entry)
+                   (and (listp (car entry))
+                        (or (memq 'python-mode (car entry))
+                            (memq 'python-ts-mode (car entry)))))
+                 eglot-server-programs)))))
+
+(defun my/eglot-python-workspace-config ()
+  "Point pylsp/jedi at the project virtualenv when one exists."
+  (when (derived-mode-p 'python-mode 'python-ts-mode)
+    (when-let ((venv (my/python-project-venv)))
+      (setq eglot-workspace-configuration
+            `(:pylsp (:plugins (:jedi (:environment ,venv))))))))
+
+(defun my/eglot-ensure ()
+  "Start Eglot when a Python LSP server is available."
+  (cond ((my/pylsp-executable)
+         (my/eglot-configure-python-server)
+         (eglot-ensure))
+        ((let ((default-directory (getenv "HOME")))
+           (or (executable-find "pyright-langserver")
+               (executable-find "pyright")))
+         (require 'eglot)
+         (eglot-ensure))))
+
+(add-hook 'eglot-managed-mode-hook #'my/eglot-python-workspace-config)
 
 (add-hook 'python-mode-hook #'my/eglot-ensure)
+(add-hook 'python-ts-mode-hook #'my/eglot-ensure)
 
 ;; Org (built-in).
 (require 'org)
