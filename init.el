@@ -55,22 +55,32 @@
  '(hl-line ((t (:background "#504945" :extend t))))
  '(line-number-current
    ((t (:foreground "#fbf1c7" :background "#504945" :weight bold))))
- ;; Active window: brighter mode line + Gruvbox orange bar on top.
+ ;; Active window mode line (status bar at the bottom).
  '(mode-line
    ((t (:background "#504945" :foreground "#fbf1c7"
                   :box (:line-width 3 :color "#fe8019")))))
+ ;; Inactive: darker band so it does not read like a comment line (#7c6f64).
  '(mode-line-inactive
-   ((t (:background "#282828" :foreground "#665c54"
+   ((t (:background "#1d2021" :foreground "#928374"
                   :box (:line-width 1 :color "#3c3836")))))
- '(window-divider ((t (:foreground "#504945")))))
+ '(window-divider
+   ((t (:foreground "#3c3836" :background "#3c3836")))))
 
 (setq display-line-numbers-type 'relative)
 (global-display-line-numbers-mode 1)
 
-;; Subtle lines between split windows (does not mark the active one).
+;; Thin, low-contrast grooves between split windows.
+(setq window-divider-default-places t)
+(setq window-divider-default-bottom-width 2)
+(setq window-divider-default-right-width 2)
 (window-divider-mode 1)
-(setq window-divider-default-places '(bottom-only right-only))
-(setq window-divider-width 2)
+(window-divider-mode-apply t)
+
+(defun my/apply-window-dividers ()
+  (when (and (display-graphic-p) window-divider-mode)
+    (window-divider-mode-apply t)))
+
+(add-hook 'after-make-frame-functions #'my/apply-window-dividers)
 
 ;; Size for new GUI frames.  Must be set before a display exists (emacs
 ;; --fg-daemon loads init with (display-graphic-p) nil).
@@ -333,6 +343,7 @@
         (when (and (not (eq frame best-frame))
                    (my/desktop-scratch-frame-p frame))
           (ignore-errors (delete-frame frame))))
+      (my/apply-window-dividers)
       (when best-frame
         (ignore-errors
           (my/desktop-show-frame-ready best-frame))))))
