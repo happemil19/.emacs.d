@@ -421,6 +421,11 @@
 (global-set-key (kbd "C-c o") #'my/org-inbox)
 (global-set-key (kbd "C-c A") #'org-agenda)
 
+;; Comment/uncomment line(s): `;;' in Elisp, `#' in Python, etc.
+;; With prefix: C-u 3 C-c ; comments three lines.
+(global-set-key (kbd "C-c ;") #'comment-line)
+;; Built-in M-; (`comment-dwim'): region if highlighted, else toggles current line.
+
 ;; Convenience: open this config quickly.
 (defun my/open-init-file ()
   (interactive)
