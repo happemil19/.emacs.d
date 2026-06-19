@@ -149,6 +149,27 @@
 (require 'magit)
 (global-set-key (kbd "C-x g") #'magit-status)
 
+(defun my/magit-project ()
+  "Choose a project root, then open Magit there."
+  (interactive)
+  (when-let ((dir (project-prompt-project-dir)))
+    (setq dir (expand-file-name dir))
+    (project--remember-dir dir)
+    (magit-status dir)))
+
+;; C-x g: Magit for the current buffer's repo.  C-c g: pick project first.
+(global-set-key (kbd "C-c g") #'my/magit-project)
+
+;; C-x p p: after choosing a project, g opens Magit (f = find file, …).
+(setq project-switch-commands
+      '((magit-status "Magit" ?g)
+        (project-find-file "Find file")
+        (project-find-regexp "Find regexp")
+        (project-find-dir "Find directory")
+        (project-vc-dir "VC-Dir")
+        (project-eshell "Eshell")
+        (project-any-command "Other")))
+
 ;; Git change markers in the fringe while editing (diff-hl).
 (my/ensure-package 'diff-hl)
 (require 'diff-hl)
