@@ -421,6 +421,21 @@
   (make-directory org-directory t)
   (find-file org-default-notes-file))
 
+;; Windows and buffers — home row under C-c (no arrow keys).
+;; h/j/k/l: move between splits (like vim C-w).  n/p: prev/next buffer.  [/]: undo window layout.
+(require 'windmove)
+(setq windmove-wrap-around t)
+(winner-mode 1)
+
+(global-set-key (kbd "C-c h") #'windmove-left)
+(global-set-key (kbd "C-c j") #'windmove-down)
+(global-set-key (kbd "C-c k") #'windmove-up)
+(global-set-key (kbd "C-c l") #'windmove-right)
+(global-set-key (kbd "C-c n") #'next-buffer)
+(global-set-key (kbd "C-c p") #'previous-buffer)
+(global-set-key (kbd "C-c [") #'winner-undo)
+(global-set-key (kbd "C-c ]") #'winner-redo)
+
 (global-set-key (kbd "C-c o") #'my/org-inbox)
 (global-set-key (kbd "C-c A") #'org-agenda)
 (global-set-key (kbd "C-c r") #'recentf-open-files)
