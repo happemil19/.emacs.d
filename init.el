@@ -50,21 +50,18 @@
 (setq blink-cursor-interval 0.5)
 
 (custom-set-faces
- ;; Near-white block on dark Gruvbox — high contrast at point.
+ ;; custom-set-faces was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
  '(cursor ((t (:background "#fbf1c7" :foreground "#1d2021" :weight ultra-bold))))
  '(hl-line ((t (:background "#504945" :extend t))))
- '(line-number-current
-   ((t (:foreground "#fbf1c7" :background "#504945" :weight bold))))
- ;; Active window mode line (status bar at the bottom).
- '(mode-line
-   ((t (:background "#504945" :foreground "#fbf1c7"
-                  :box (:line-width 3 :color "#fe8019")))))
- ;; Inactive: darker band so it does not read like a comment line (#7c6f64).
- '(mode-line-inactive
-   ((t (:background "#1d2021" :foreground "#928374"
-                  :box (:line-width 1 :color "#3c3836")))))
- '(window-divider
-   ((t (:foreground "#3c3836" :background "#3c3836")))))
+ '(line-number-current ((t (:foreground "#fbf1c7" :background "#504945" :weight bold))))
+ '(mode-line ((t (:background "#504945" :foreground "#fbf1c7" :box (:line-width 3 :color "#fe8019")))))
+ '(mode-line-inactive ((t (:background "#282828" :foreground "#665c54" :box (:line-width 1 :color "#3c3836")))))
+ '(window-divider ((t (:foreground "#504945"))))
+ '(window-divider-first-pixel ((t (:foreground "#928374"))))
+ '(window-divider-last-pixel ((t (:foreground "#7c6f64" :background "#7c6f64")))))
 
 (setq display-line-numbers-type 'relative)
 (global-display-line-numbers-mode 1)
@@ -145,6 +142,17 @@
 (require 'project)
 (setq vc-follow-symlinks t)
 
+(defun my/delete-magit-bytecode ()
+  "Delete Magit .elc files.
+
+Package byte-compilation does not honor read-symbol-shorthands, so
+compiled Magit code leaves bare `$' (cond-let anaphor) and Magit fails
+to open with \"void-variable $\"."
+  (dolist (dir (directory-files package-user-dir t "\\`magit"))
+    (dolist (elc (directory-files dir t "\\.elc\\'"))
+      (delete-file elc))))
+
+(my/delete-magit-bytecode)
 (my/ensure-package 'magit)
 (require 'magit)
 (global-set-key (kbd "C-x g") #'magit-status)
@@ -471,3 +479,13 @@
   (interactive)
   (find-file user-init-file))
 (global-set-key (kbd "C-c e") #'my/open-init-file)
+(custom-set-variables
+ ;; custom-set-variables was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ '(package-selected-packages
+   '(ace-window company counsel diff-hl docker docker-compose-mode
+                docker-tramp dockerfile-mode flycheck goto-chg
+                gruvbox-theme magit projectile speechd-el vterm
+                yasnippet zenburn-theme)))
