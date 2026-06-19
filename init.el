@@ -394,6 +394,9 @@
 (savehist-mode 1)
 (setq history-length 1000)
 
+(recentf-mode 1)
+(setq recentf-max-saved-items 200)
+
 (setq confirm-kill-processes t)
 
 ;; Org (built-in).
@@ -420,6 +423,7 @@
 
 (global-set-key (kbd "C-c o") #'my/org-inbox)
 (global-set-key (kbd "C-c A") #'org-agenda)
+(global-set-key (kbd "C-c r") #'recentf-open-files)
 
 ;; Comment/uncomment line(s): `;;' in Elisp, `#' in Python, etc.
 ;; With prefix: C-u 3 C-c ; comments three lines.
