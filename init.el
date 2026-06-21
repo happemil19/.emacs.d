@@ -73,8 +73,9 @@
 (window-divider-mode 1)
 (window-divider-mode-apply t)
 
-(defun my/apply-window-dividers ()
-  (when (and (display-graphic-p) window-divider-mode)
+(defun my/apply-window-dividers (&optional frame)
+  (when (and (display-graphic-p (or frame (selected-frame)))
+             window-divider-mode)
     (window-divider-mode-apply t)))
 
 (add-hook 'after-make-frame-functions #'my/apply-window-dividers)
@@ -278,20 +279,57 @@ to open with \"void-variable $\"."
 ;; desktop-read must run with that client frame *selected*; otherwise
 ;; `desktop-restoring-frameset-p' is nil and only *scratch* comes back.
 (setq desktop-path (list user-emacs-directory))
-(setq desktop-prompt-restore 'yes)
+(setq desktop-prompt-restore nil)
 (setq desktop-save t)
 (setq desktop-autosave-interval 300)
-(setq desktop-restore-reuses-frames t)
+;; Daemon + emacsclient: reuse scratch frame breaks frameset restore (nil markers).
+(setq desktop-restore-reuses-frames (if (daemonp) nil t))
+(setq desktop-buffers-not-to-save
+      (concat "\\` \\|"
+              (regexp-opt '("*scratch*" "*Messages*" "*Warnings*"
+                             "*Completions*" "*Help*" "*Backtrace*")
+                          t)))
 
 (defvar my/desktop--enabled nil)
 (defvar my/desktop--after-restored nil)
+(defvar my/desktop--restore-ok nil)
 
-(defun my/desktop-hide-frame (frame)
-  (when (and frame (frame-live-p frame) (display-graphic-p frame))
-    (modify-frame-parameters frame '((visibility . nil)))))
+(defun my/desktop-save-ok-p ()
+  "True when at least one on-screen window shows a file-visiting buffer."
+  (seq-find (lambda (buf)
+              (and (get-buffer-window buf t)
+                   (buffer-file-name buf)))
+            (buffer-list)))
+
+(defun my/desktop-save-guard (orig dir &optional release only-if-changed version)
+  "Do not overwrite .emacs.desktop with scratch/*Warnings* garbage."
+  (if (my/desktop-save-ok-p)
+      (apply orig dir release only-if-changed version)
+    (when (called-interactively-p 'interactive)
+      (message "Desktop save skipped (no file buffers in windows)"))))
+
+(defun my/desktop-clamp-frame-positions ()
+  "Keep saved frame coords on-screen (avoids `left + -10' in .emacs.desktop)."
+  (dolist (frame (my/desktop-gui-frames))
+    (let* ((pos (frame-position frame))
+           (left (car pos))
+           (top (cdr pos)))
+      (when (or (not (numberp left)) (< left 0) (>= left 1600)
+                (not (numberp top)) (< top 0))
+        (set-frame-position frame (max 0 (if (numberp left) left 100))
+                            (max 0 (if (numberp top) top 100)))))))
+
+(with-eval-after-load 'desktop
+  (advice-add #'desktop-save :around #'my/desktop-save-guard)
+  (add-hook 'desktop-save-hook #'my/desktop-clamp-frame-positions))
+
+(defun my/desktop-gui-frame-p (frame)
+  "Non-terminal frame (emacsclient GUI or restored desktop frame)."
+  (and frame (frame-live-p frame)
+       (not (eq (frame-terminal frame) 'terminal))))
 
 (defun my/desktop-show-frame (frame)
-  (when (and frame (frame-live-p frame) (display-graphic-p frame))
+  (when (my/desktop-gui-frame-p frame)
     (modify-frame-parameters frame '((visibility . t)))
     (raise-frame frame)))
 
@@ -305,35 +343,8 @@ to open with \"void-variable $\"."
        (redisplay t)
        (my/desktop-show-frame frame)))))
 
-(defun my/desktop-client-frame-params-p (params)
-  (and params (plist-member params 'client)
-       (not (plist-get params 'terminal))))
-
-(defun my/desktop-make-frame-invisible (orig &rest args)
-  "Create emacsclient GUI frames hidden when a desktop session will load."
-  (let ((params (car args)))
-    (when (and (daemonp)
-               (not my/desktop--enabled)
-               (file-exists-p (my/desktop-file))
-               (my/desktop-client-frame-params-p params))
-      (setf (car args) (append params '((visibility . nil)))))
-    (apply orig args)))
-
-(defun my/desktop-hide-client-frame (frame)
-  "Hide the emacsclient scratch frame until desktop restore finishes."
-  (when (and (daemonp)
-             (not my/desktop--enabled)
-             (display-graphic-p frame)
-             (frame-parameter frame 'client)
-             (file-exists-p (my/desktop-file)))
-    (my/desktop-hide-frame frame)))
-
 (defun my/desktop-gui-frames ()
-  (let (frames)
-    (dolist (frame (frame-list))
-      (when (display-graphic-p frame)
-        (push frame frames)))
-    frames))
+  (seq-filter #'my/desktop-gui-frame-p (frame-list)))
 
 (defun my/desktop-best-gui-frame (frames)
   "Return the GUI frame with the most windows."
@@ -352,10 +363,7 @@ to open with \"void-variable $\"."
 
 (defun my/desktop-frames-on-screen ()
   "Move GUI frames onto the visible display (desktop can save off-screen coords)."
-  (dolist (frame (my/desktop-gui-frames))
-    (let ((pos (frame-position frame)))
-      (when (>= (car pos) 1600)
-        (set-frame-position frame 100 100)))))
+  (my/desktop-clamp-frame-positions))
 
 (defun my/desktop-after-restore ()
   "Raise the restored GUI frame; drop leftover tty/scratch frames."
@@ -375,7 +383,9 @@ to open with \"void-variable $\"."
       (my/apply-window-dividers)
       (when best-frame
         (ignore-errors
-          (my/desktop-show-frame-ready best-frame))))))
+          (my/desktop-show-frame-ready best-frame)))
+      (setq my/desktop--restore-ok t)
+      (desktop-save-mode 1))))
 
 (defun my/desktop-file ()
   (expand-file-name ".emacs.desktop" user-emacs-directory))
@@ -389,32 +399,54 @@ to open with \"void-variable $\"."
         (unless (and owner (= owner (emacs-pid)))
           (delete-file lockfile))))))
 
+(defun my/desktop-purge-zombie-frames ()
+  "Drop hidden client scratch frames left by failed restore attempts."
+  (dolist (frame (my/desktop-gui-frames))
+    (when (and (frame-parameter frame 'client)
+               (not (frame-visible-p frame))
+               (my/desktop-scratch-frame-p frame))
+      (ignore-errors (delete-frame frame)))))
+
 (defun my/desktop-enable (&optional client-frame)
   (unless my/desktop--enabled
     (setq my/desktop--enabled t)
     (setq my/desktop--after-restored nil)
+    (setq my/desktop--restore-ok nil)
     (my/desktop-clear-stale-lock)
+    (my/desktop-purge-zombie-frames)
+    ;; Autosave stays off until restore succeeds or first real session starts.
     (setq desktop-save-mode nil)
-    (desktop-save-mode 1)
     (add-hook 'desktop-after-read-hook #'my/desktop-after-restore)
-    (when (and client-frame (file-exists-p (my/desktop-file)))
-      (select-frame client-frame)
-      (my/desktop-hide-frame client-frame))
-    (when (file-exists-p (my/desktop-file))
-      (unwind-protect
-          (let ((inhibit-redisplay t))
-            (desktop-read))
-        (unless my/desktop--after-restored
-          (my/desktop-show-frame-ready (or client-frame (selected-frame))))))))
+    (when client-frame
+      (select-frame client-frame))
+    (if (file-exists-p (my/desktop-file))
+        (unwind-protect
+            (let ((inhibit-redisplay t))
+              (condition-case err
+                  (desktop-read)
+                (error
+                 (message "Desktop restore failed: %S (keeping previous .emacs.desktop)"
+                          err)
+                 (ignore-errors (desktop-clear))
+                 (setq my/desktop--after-restored t))))
+          (unless my/desktop--after-restored
+            (my/desktop-show-frame-ready (or client-frame (selected-frame)))))
+      (progn
+        (when client-frame
+          (my/desktop-show-frame-ready client-frame))
+        (desktop-save-mode 1)))))
 
 (defun my/desktop-enable-server-frame ()
-  (when (display-graphic-p (selected-frame))
-    (my/desktop-enable (selected-frame))))
+  "First emacsclient GUI frame restores desktop; later ones show immediately."
+  (let ((frame (selected-frame)))
+    (when (my/desktop-gui-frame-p frame)
+      (if my/desktop--enabled
+          (my/desktop-show-frame-ready frame)
+        (my/desktop-enable frame)))))
 
 (with-eval-after-load 'server
-  (advice-add #'make-frame :around #'my/desktop-make-frame-invisible)
-  (add-hook 'server-after-make-frame-hook #'my/desktop-enable-server-frame)
-  (add-hook 'after-make-frame-functions #'my/desktop-hide-client-frame))
+  (setq server-raise-frame t)
+  (add-hook 'server-after-make-frame-hook #'my/desktop-enable-server-frame))
 (when (and (display-graphic-p) (not noninteractive) (not (daemonp)))
   (my/desktop-enable))
 
