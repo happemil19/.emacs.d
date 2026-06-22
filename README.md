@@ -49,8 +49,15 @@ systemctl --user status emacs.service
 systemctl --user restart emacs.service
 ```
 
-Перед стартом `bin/emacs-server-precheck.sh` убирает «мёртвый» сокет сервера,
-если старый процесс завис.
+Если после серии сбоев видите «Start request repeated too quickly»:
+
+```bash
+systemctl --user reset-failed emacs.service
+systemctl --user start emacs.service
+```
+
+Перед стартом `bin/emacs-server-precheck.sh` завершает зависший/чужой демон
+и удаляет мёртвый сокет.
 
 ## Клавиши (`C-c …`)
 
