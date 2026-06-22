@@ -143,18 +143,18 @@
 (require 'project)
 (setq vc-follow-symlinks t)
 
-(defun my/delete-magit-bytecode ()
-  "Delete Magit .elc files.
+(defun my/delete-shorthand-bytecode ()
+  "Delete .elc for packages that use `read-symbol-shorthands' (`$').
 
-Package byte-compilation does not honor read-symbol-shorthands, so
-compiled Magit code leaves bare `$' (cond-let anaphor) and Magit fails
-to open with \"void-variable $\"."
-  (dolist (dir (directory-files package-user-dir t "\\`magit"))
-    (dolist (elc (directory-files dir t "\\.elc\\'"))
-      (delete-file elc))))
+Byte-compilation does not honor shorthands, so compiled code references
+bare `$' and Magit/Transient fail with \"void-variable $\"."
+  (dolist (prefix '("magit" "transient" "cond-let"))
+    (dolist (dir (directory-files package-user-dir t (concat "\\`" prefix)))
+      (dolist (elc (directory-files dir t "\\.elc\\'"))
+        (delete-file elc)))))
 
-(my/delete-magit-bytecode)
 (my/ensure-package 'magit)
+(my/delete-shorthand-bytecode)
 (require 'magit)
 (global-set-key (kbd "C-x g") #'magit-status)
 
