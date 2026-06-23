@@ -142,9 +142,18 @@
 
 (global-set-key (kbd "C-c t") #'my/vterm)
 
-;; Markdown: gfm-mode for .md.  Preview: C-c C-c p (browser) or C-c C-c l (live).
+;; Markdown: gfm-mode for .md.  Browser: C-c C-c p; live: C-c C-c l.
 (defvar my/markdown-preview-css
   (expand-file-name "markdown/preview.css" user-emacs-directory))
+
+(defcustom my/markdown-browser-preview-format 'html
+  "Default format for `my/markdown-preview-browser' (C-c C-c p).
+`html' runs markdown_py and opens styled HTML; `markdown' opens the
+.md file so a browser extension can render it.  Prefix (C-u) inverts
+the choice for one call."
+  :type '(choice (const :tag "HTML (markdown_py + preview.css)" html)
+                 (const :tag "Markdown (browser extension)" markdown))
+  :group 'markdown)
 
 ;; Desktop default browser via xdg-open.  browse-url-xdg-open passes file://
 ;; URLs; on MATE that often opens Firefox instead of the MIME default (Vivaldi).
@@ -195,6 +204,32 @@
     (visual-wrap-prefix-mode 1)))
 
 (add-hook 'eww-mode-hook #'my/eww-wrap-display)
+
+(defun my/markdown-preview-markdown ()
+  "Open the buffer as .md in the browser (for a Markdown extension)."
+  (interactive)
+  (let ((file
+         (if (and buffer-file-name (not (buffer-modified-p)))
+             buffer-file-name
+           (let ((f (make-temp-file "md-preview-" nil ".md")))
+             (write-region (point-min) (point-max) f nil 'no-message)
+             f))))
+    (my/browse-url-open file)))
+
+(defun my/markdown-preview-browser (&optional output-buffer-name)
+  "Preview in browser as HTML or Markdown.
+See `my/markdown-browser-preview-format'; C-u inverts the choice."
+  (interactive "P")
+  (let ((as-markdown (if current-prefix-arg
+                         (eq my/markdown-browser-preview-format 'html)
+                       (eq my/markdown-browser-preview-format 'markdown))))
+    (if as-markdown
+        (my/markdown-preview-markdown)
+      (markdown-preview output-buffer-name))))
+
+(with-eval-after-load 'markdown-mode
+  (define-key markdown-mode-map (kbd "C-c C-c p") #'my/markdown-preview-browser)
+  (define-key gfm-mode-map (kbd "C-c C-c p") #'my/markdown-preview-browser))
 
 ;; Git / projects / Python.
 (require 'project)
