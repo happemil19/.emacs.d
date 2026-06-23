@@ -142,6 +142,60 @@
 
 (global-set-key (kbd "C-c t") #'my/vterm)
 
+;; Markdown: gfm-mode for .md.  Preview: C-c C-c p (browser) or C-c C-c l (live).
+(defvar my/markdown-preview-css
+  (expand-file-name "markdown/preview.css" user-emacs-directory))
+
+;; Desktop default browser via xdg-open.  browse-url-xdg-open passes file://
+;; URLs; on MATE that often opens Firefox instead of the MIME default (Vivaldi).
+(require 'browse-url)
+
+(defun my/browse-url--local-path (url)
+  "Return a filesystem path for file:// URL, or URL unchanged otherwise."
+  (if (string-prefix-p "file://" url)
+      (url-unhex-string
+       (if (string-prefix-p "file://localhost" url)
+           (substring url (length "file://localhost"))
+         (substring url (length "file://"))))
+    url))
+
+(defun my/browse-url-open (url &rest _args)
+  "Open URL in Vivaldi (fallback: xdg-open)."
+  (let* ((display (or (frame-parameter nil 'display) (getenv "DISPLAY")))
+         (target (my/browse-url--local-path url))
+         (browser (or (executable-find "vivaldi-stable")
+                      (executable-find "vivaldi"))))
+    (when display (setenv "DISPLAY" display))
+    (if browser
+        (start-process "browser" nil browser target)
+      (call-process "xdg-open" nil 0 nil target))))
+
+(setq browse-url-browser-function #'my/browse-url-open)
+(setq browse-url-secondary-browser-function #'my/browse-url-open)
+
+;; markdown_py without -x tables leaves pipe tables as plain text.
+(setq markdown-command '("markdown_py" "-x" "tables" "-x" "fenced_code"))
+(setq markdown-css-paths (list my/markdown-preview-css))
+
+(my/ensure-package 'markdown-mode)
+(require 'markdown-mode)
+(add-to-list 'auto-mode-alist '("\\.md\\'" . gfm-mode))
+(add-to-list 'auto-mode-alist '("\\.markdown\\'" . gfm-mode))
+
+;; Live preview uses eww/shr, not the browser — shr ignores most CSS.
+(setq shr-max-width nil)
+(setq shr-width nil)
+(setq shr-fill-text nil)
+
+(defun my/eww-wrap-display ()
+  "Wrap long lines at the window edge in eww (markdown live preview)."
+  (setq-local truncate-lines nil)
+  (visual-line-mode 1)
+  (when (fboundp 'visual-wrap-prefix-mode)
+    (visual-wrap-prefix-mode 1)))
+
+(add-hook 'eww-mode-hook #'my/eww-wrap-display)
+
 ;; Git / projects / Python.
 (require 'project)
 (setq vc-follow-symlinks t)
@@ -167,7 +221,7 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
   (when-let ((dir (project-prompt-project-dir)))
     (setq dir (expand-file-name dir))
     (project--remember-dir dir)
-    (magit-status dir)))
+    (magit-status-setup-buffer dir)))
 
 ;; C-x g: Magit for the current buffer's repo.  C-c g: pick project first.
 (global-set-key (kbd "C-c g") #'my/magit-project)
@@ -208,7 +262,7 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
 (setq-default indent-tabs-mode nil)
 
 (defun my/pylsp-executable ()
-  "Return a real pylsp binary, not a pyenv shim that fails under local .python-version."
+  "Return real pylsp binary, not a pyenv shim with local .python-version."
   (let* ((pyenv-root (or (getenv "PYENV_ROOT")
                          (expand-file-name "~/.pyenv")))
          (candidates
@@ -398,7 +452,9 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
   (let ((lockfile (expand-file-name ".emacs.desktop.lock" user-emacs-directory)))
     (when (file-exists-p lockfile)
       (let ((owner (ignore-errors
-                     (string-to-number (string-trim (file-string lockfile))))))
+                     (with-temp-buffer
+                       (insert-file-contents lockfile)
+                       (string-to-number (string-trim (buffer-string)))))))
         (unless (and owner (= owner (emacs-pid)))
           (delete-file lockfile))))))
 
@@ -504,7 +560,7 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
 (global-set-key (kbd "C-c A") #'org-agenda)
 (global-set-key (kbd "C-c r") #'recentf-open-files)
 
-;; Comment/uncomment line(s): `;;' in Elisp, `#' in Python, etc.
+;; comment-line on C-c ; toggles line comments (C-u 3 affects three lines).
 ;; With prefix: C-u 3 C-c ; comments three lines.
 (global-set-key (kbd "C-c ;") #'comment-line)
 ;; Built-in M-; (`comment-dwim'): region if highlighted, else toggles current line.
@@ -522,5 +578,5 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
  '(package-selected-packages
    '(ace-window company counsel diff-hl docker docker-compose-mode
                 docker-tramp dockerfile-mode flycheck goto-chg
-                gruvbox-theme magit projectile speechd-el vterm
+                gruvbox-theme magit markdown-mode projectile speechd-el vterm
                 yasnippet zenburn-theme)))

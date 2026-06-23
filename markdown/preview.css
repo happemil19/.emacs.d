@@ -1,0 +1,88 @@
+/* Markdown preview (browser + eww live).  Gruvbox-dark palette. */
+body {
+  font-family: sans-serif;
+  line-height: 1.55;
+  max-width: 52em;
+  margin: 2em auto;
+  padding: 0 1.5em;
+  background: #282828;
+  color: #ebdbb2;
+  overflow-wrap: break-word;
+}
+
+p, li, td, th, blockquote {
+  overflow-wrap: break-word;
+}
+
+a {
+  color: #83a598;
+  overflow-wrap: anywhere;
+}
+a:visited { color: #d3869b; }
+
+h1, h2, h3, h4, h5, h6 {
+  color: #fbf1c7;
+  margin-top: 1.2em;
+}
+
+table {
+  border-collapse: collapse;
+  margin: 1em 0;
+  width: 100%;
+  table-layout: fixed;
+}
+
+th, td {
+  border: 1px solid #665c54;
+  padding: 0.4em 0.8em;
+  text-align: left;
+  overflow-wrap: break-word;
+}
+
+th {
+  background: #3c3836;
+  color: #fbf1c7;
+}
+
+tr:nth-child(even) td {
+  background: #32302f;
+}
+
+code {
+  background: #3c3836;
+  color: #fe8019;
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 0.95em;
+  overflow-wrap: break-word;
+}
+
+pre {
+  background: #1d2021;
+  border: 1px solid #504945;
+  padding: 0.8em 1em;
+  overflow-x: auto;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+pre code {
+  background: transparent;
+  color: #ebdbb2;
+  padding: 0;
+}
+
+blockquote {
+  margin: 1em 0;
+  padding: 0.2em 1em;
+  border-left: 4px solid #928374;
+  color: #a89984;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #504945;
+  margin: 1.5em 0;
+}
