@@ -43,18 +43,24 @@
 (global-hl-line-mode 1)
 (setq hl-line-sticky-flag t)
 
-;; Active window: blinking cursor.  Others: no cursor at all.
+;; Active window: blinking bar cursor (does not cover the glyph).  Daemon
+;; starts without a display, so color is reapplied on each GUI frame below.
+(defconst my/cursor-color "#fbf1c7")
 (setq cursor-in-non-selected-windows nil)
+(setq cursor-type 'bar)
+(setq x-stretch-cursor nil)
 (blink-cursor-mode 1)
 (setq blink-cursor-delay 0.5)
 (setq blink-cursor-interval 0.5)
+(add-to-list 'default-frame-alist `(cursor-type . bar))
+(add-to-list 'default-frame-alist `(cursor-color . ,my/cursor-color))
 
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
- '(cursor ((t (:background "#fbf1c7" :foreground "#1d2021" :weight ultra-bold))))
+ `(cursor ((t (:background ,my/cursor-color))))
  '(hl-line ((t (:background "#504945" :extend t))))
  '(line-number-current ((t (:foreground "#fbf1c7" :background "#504945" :weight bold))))
  '(mode-line ((t (:background "#504945" :foreground "#fbf1c7" :box (:line-width 3 :color "#fe8019")))))
@@ -78,20 +84,17 @@
              window-divider-mode)
     (window-divider-mode-apply t)))
 
+(defun my/apply-cursor-frame (&optional frame)
+  (when (display-graphic-p (or frame (selected-frame)))
+    (set-cursor-color my/cursor-color)))
+
 (add-hook 'after-make-frame-functions #'my/apply-window-dividers)
+(add-hook 'after-make-frame-functions #'my/apply-cursor-frame)
 
 ;; Size for new GUI frames.  Must be set before a display exists (emacs
 ;; --fg-daemon loads init with (display-graphic-p) nil).
 (add-to-list 'default-frame-alist '(width . 140))
 (add-to-list 'default-frame-alist '(height . 40))
-
-(if (display-graphic-p)
-    (progn
-      ;; Filled cell over the character (bar + stretch), not a thin line.
-      (setq x-stretch-cursor t)
-      (setq cursor-type 'box)
-      (set-cursor-color "#fbf1c7"))
-  (setq cursor-type 'box))
 
 ;; Hint: available keys after a prefix (C-x, C-c, …). Not M-x command names.
 (my/ensure-package 'which-key)
