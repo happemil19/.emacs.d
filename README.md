@@ -2,6 +2,8 @@
 
 Минимальная конфигурация Emacs: один `init.el`, GUI через user-демон и `emacsclient`.
 
+Краткая шпаргалка: [mini-README.md](mini-README.md).
+
 ## Требования
 
 - Emacs 28+ (сейчас: `/usr/local/bin/emacs`)
