@@ -207,6 +207,19 @@
 
 (global-set-key (kbd "C-c t") #'my/vterm)
 
+;; Docker: Dockerfiles, compose YAML, container UI (M-x docker), TRAMP (/docker:…).
+(my/ensure-package 'dockerfile-mode)
+(require 'dockerfile-mode)
+
+(my/ensure-package 'docker-compose-mode)
+(require 'docker-compose-mode)
+(add-to-list 'auto-mode-alist '("\\`compose\\.ya?ml\\'" . docker-compose-mode))
+
+(my/ensure-package 'docker)
+(require 'docker)
+
+(require 'tramp-container)
+
 ;; Markdown: gfm-mode for .md.  Browser: C-c C-c p; live: C-c C-c l.
 (defvar my/markdown-preview-css
   (expand-file-name "markdown/preview.css" user-emacs-directory))
@@ -721,6 +734,6 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
  ;; If there is more than one, they won't work right.
  '(package-selected-packages
    '(ace-window company counsel diff-hl docker docker-compose-mode
-                docker-tramp dockerfile-mode flycheck goto-chg
+                dockerfile-mode flycheck goto-chg
                 gruvbox-theme magit markdown-mode nerd-icons nerd-icons-dired
                 nerd-icons-ibuffer projectile speechd-el vterm yasnippet zenburn-theme)))
