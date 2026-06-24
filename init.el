@@ -332,16 +332,17 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
   "Choose a project root, then open Magit there."
   (interactive)
   (when-let ((dir (project-prompt-project-dir)))
-    (setq dir (expand-file-name dir))
-    (project--remember-dir dir)
-    (magit-status-setup-buffer dir)))
+    (let ((default-directory (expand-file-name dir)))
+      (when-let ((pr (project-current t)))
+        (project-remember-project pr)
+        (magit-project-status)))))
 
 ;; C-x g: Magit for the current buffer's repo.  C-c g: pick project first.
 (global-set-key (kbd "C-c g") #'my/magit-project)
 
 ;; C-x p p: after choosing a project, g opens Magit (f = find file, …).
 (setq project-switch-commands
-      '((magit-status "Magit" ?g)
+      '((magit-project-status "Magit" ?g)
         (project-find-file "Find file")
         (project-find-regexp "Find regexp")
         (project-find-dir "Find directory")
@@ -733,7 +734,7 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
  '(package-selected-packages
-   '(ace-window company counsel diff-hl docker docker-compose-mode
+   '(ace-window company diff-hl docker docker-compose-mode
                 dockerfile-mode flycheck goto-chg
                 gruvbox-theme magit markdown-mode nerd-icons nerd-icons-dired
-                nerd-icons-ibuffer projectile speechd-el vterm yasnippet zenburn-theme)))
+                nerd-icons-ibuffer speechd-el vterm yasnippet zenburn-theme)))
