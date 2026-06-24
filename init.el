@@ -64,31 +64,16 @@
  '(hl-line ((t (:background "#504945" :extend t))))
  '(line-number-current ((t (:foreground "#fbf1c7" :background "#504945" :weight bold))))
  '(mode-line ((t (:background "#504945" :foreground "#fbf1c7" :box (:line-width 3 :color "#fe8019")))))
- '(mode-line-inactive ((t (:background "#282828" :foreground "#665c54" :box (:line-width 1 :color "#3c3836")))))
- '(window-divider ((t (:foreground "#504945"))))
- '(window-divider-first-pixel ((t (:foreground "#928374"))))
- '(window-divider-last-pixel ((t (:foreground "#7c6f64" :background "#7c6f64")))))
+ '(mode-line-inactive ((t (:background "#282828" :foreground "#665c54" :box (:line-width 1 :color "#3c3836"))))))
 
 (setq display-line-numbers-type 'relative)
 (global-display-line-numbers-mode 1)
-
-;; Thin, low-contrast grooves between split windows.
-(setq window-divider-default-places t)
-(setq window-divider-default-bottom-width 2)
-(setq window-divider-default-right-width 2)
-(window-divider-mode 1)
-(window-divider-mode-apply t)
-
-(defun my/apply-window-dividers (&optional frame)
-  (when (and (display-graphic-p (or frame (selected-frame)))
-             window-divider-mode)
-    (window-divider-mode-apply t)))
+(window-divider-mode -1)
 
 (defun my/apply-cursor-frame (&optional frame)
   (when (display-graphic-p (or frame (selected-frame)))
     (set-cursor-color my/cursor-color)))
 
-(add-hook 'after-make-frame-functions #'my/apply-window-dividers)
 (add-hook 'after-make-frame-functions #'my/apply-cursor-frame)
 
 ;; File-type icons (Nerd Font glyphs, not emoji).  GUI only.
@@ -156,6 +141,11 @@
 (require 'which-key)
 (which-key-mode 1)
 (setq which-key-idle-delay 0.8)
+;; Drop legacy which-key advice from older init versions.
+(dolist (sym '(my/which-key--side-window-margin my/which-key--pad-side-window
+                my/which-key--side-window-taller my/which-key--nudge-bottom-gap
+                my/which-key--no-bottom-divider))
+  (advice-remove 'which-key--show-buffer-side-window sym))
 ;; Let which-key page C-h bindings: C-h C-h n / C-h C-h p (not help-for-help).
 (global-unset-key (kbd "C-h C-h"))
 
@@ -527,7 +517,7 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
         (when (and (not (eq frame best-frame))
                    (my/desktop-scratch-frame-p frame))
           (ignore-errors (delete-frame frame))))
-      (my/apply-window-dividers)
+      (my/apply-cursor-frame (selected-frame))
       (when best-frame
         (ignore-errors
           (my/desktop-show-frame-ready best-frame)))
