@@ -1,5 +1,8 @@
 ;;; init.el --- Minimal Emacs config  -*- lexical-binding: t; -*-
 
+;; Prefer init.el over init.elc when the source is newer (stale .elc bites).
+(setq load-prefer-newer t)
+
 ;; Goal: keep the configuration as small and reproducible as possible.
 ;; Primary UI: emacs --fg-daemon + emacsclient -c (GUI).  RHVoice via speechd-el.
 
@@ -60,7 +63,7 @@
  ;; If you edit it by hand, you could mess it up, so be careful.
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
- `(cursor ((t (:background ,my/cursor-color))))
+ '(cursor ((t (:background "#fbf1c7"))))
  '(hl-line ((t (:background "#504945" :extend t))))
  '(line-number-current ((t (:foreground "#fbf1c7" :background "#504945" :weight bold))))
  '(mode-line ((t (:background "#504945" :foreground "#fbf1c7" :box (:line-width 3 :color "#fe8019")))))
@@ -71,10 +74,29 @@
 (window-divider-mode -1)
 
 (defun my/apply-cursor-frame (&optional frame)
-  (when (display-graphic-p (or frame (selected-frame)))
-    (set-cursor-color my/cursor-color)))
+  (let ((frame (or frame (selected-frame))))
+    (when (display-graphic-p frame)
+      (modify-frame-parameters frame '((cursor-type . bar)))
+      (set-cursor-color my/cursor-color))))
 
-(add-hook 'after-make-frame-functions #'my/apply-cursor-frame)
+(defun my/apply-mode-line-settings ()
+  "Mode-line icons; also undo legacy prepends from older init versions."
+  (my/mode-line--strip-legacy-nerd-icons)
+  (setq mode-line-buffer-identification
+        '((:eval (my/mode-line-buffer-identification)))))
+
+(defun my/reapply-init-gui-frame (&optional frame)
+  "Per-frame GUI settings that desktop frameset restore can override."
+  (my/apply-cursor-frame frame))
+
+(defun my/reapply-init-gui-settings ()
+  "Reapply global + per-frame GUI init after desktop restore."
+  (my/apply-mode-line-settings)
+  (dolist (frame (my/desktop-gui-frames))
+    (my/reapply-init-gui-frame frame))
+  (force-mode-line-update t))
+
+(add-hook 'after-make-frame-functions #'my/reapply-init-gui-frame)
 
 ;; File-type icons (Nerd Font glyphs, not emoji).  GUI only.
 (my/ensure-package 'nerd-icons)
@@ -110,9 +132,7 @@
         (concat icon " " (propertize name 'face 'mode-line-buffer-id))
       (propertize name 'face 'mode-line-buffer-id))))
 
-(my/mode-line--strip-legacy-nerd-icons)
-(setq mode-line-buffer-identification
-      '((:eval (my/mode-line-buffer-identification))))
+(my/apply-mode-line-settings)
 
 (add-hook 'dired-mode-hook #'nerd-icons-dired-mode)
 (add-hook 'ibuffer-mode-hook #'nerd-icons-ibuffer-mode)
@@ -365,6 +385,8 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
              (expand-file-name ".venv" root))
         (expand-file-name "venv" root))))
 
+(eval-when-compile (require 'eglot))
+
 (defun my/eglot-configure-python-server ()
   "Register pylsp for Python modes; bypass pyenv shims."
   (when-let ((pylsp (my/pylsp-executable)))
@@ -517,7 +539,7 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
         (when (and (not (eq frame best-frame))
                    (my/desktop-scratch-frame-p frame))
           (ignore-errors (delete-frame frame))))
-      (my/apply-cursor-frame (selected-frame))
+      (my/reapply-init-gui-settings)
       (when best-frame
         (ignore-errors
           (my/desktop-show-frame-ready best-frame)))
@@ -646,6 +668,48 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
 ;; Built-in M-; (`comment-dwim'): region if highlighted, else toggles current line.
 
 ;; Convenience: open this config quickly.
+(defun my/init-el-p ()
+  "Non-nil when the current buffer is user-init-file."
+  (and buffer-file-name
+       (equal (expand-file-name buffer-file-name)
+              (expand-file-name user-init-file))))
+
+(defun my/purge-init-elc ()
+  "Remove init.elc so restart always loads the init.el we just evaluated."
+  (let ((elc (concat user-init-file "c")))
+    (when (file-exists-p elc)
+      (delete-file elc))
+    (message "init.el evaluated (init.elc removed; restart loads source)")))
+
+(defun my/init-el-remove-eval-advice ()
+  "Remove legacy/broken advice on `eval-buffer'."
+  (dolist (sym '(my/eval-init-el-byte-compile
+                  my/eval-init-el--around
+                  ad-Advice-eval-buffer))
+    (advice-remove 'eval-buffer sym)))
+
+(defun my/eval-init-el ()
+  "Save and evaluate init.el; drop init.elc so restart matches the buffer."
+  (interactive)
+  (unless (my/init-el-p)
+    (user-error "Not in %s" user-init-file))
+  (my/init-el-remove-eval-advice)
+  (condition-case err
+      (progn
+        (save-buffer)
+        (eval-buffer nil nil nil t)
+        (my/purge-init-elc))
+    (error
+     (message "init.el eval failed: %S" err)
+     (signal (car err) (cdr err)))))
+
+(defun my/init-el-setup-local-keys ()
+  (when (my/init-el-p)
+    (local-set-key (kbd "C-c C-c") #'my/eval-init-el)))
+
+(add-hook 'emacs-lisp-mode-hook #'my/init-el-setup-local-keys)
+(my/init-el-remove-eval-advice)
+
 (defun my/open-init-file ()
   (interactive)
   (find-file user-init-file))
