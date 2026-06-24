@@ -91,6 +91,61 @@
 (add-hook 'after-make-frame-functions #'my/apply-window-dividers)
 (add-hook 'after-make-frame-functions #'my/apply-cursor-frame)
 
+;; File-type icons (Nerd Font glyphs, not emoji).  GUI only.
+(my/ensure-package 'nerd-icons)
+(my/ensure-package 'nerd-icons-dired)
+(my/ensure-package 'nerd-icons-ibuffer)
+(require 'nerd-icons)
+(require 'nerd-icons-dired)
+(require 'nerd-icons-ibuffer)
+
+(setq nerd-icons-font-family "FiraCode Nerd Font")
+
+(defun my/nerd-icons-file-icon (&optional file)
+  "File-extension icon for FILE or the current buffer (GUI only)."
+  (when (display-graphic-p)
+    (nerd-icons-icon-for-file
+     (or file
+         (and buffer-file-name (file-name-nondirectory buffer-file-name))
+         (buffer-name))
+     :height 0.9 :v-adjust 0.05)))
+
+(defun my/mode-line--strip-legacy-nerd-icons ()
+  "Drop stacked nerd-icon prepends left by older init.el versions."
+  (let ((legacy '(:eval (my/mode-line-buffer-icon)))
+        (fmt (default-value 'mode-line-format)))
+    (while (and fmt (equal (car fmt) legacy))
+      (setq fmt (cdr fmt)))
+    (setq-default mode-line-format fmt)))
+
+(defun my/mode-line-buffer-identification ()
+  "Buffer name with a single file-extension icon (GUI only)."
+  (let ((name (buffer-name)))
+    (if-let ((icon (my/nerd-icons-file-icon)))
+        (concat icon " " (propertize name 'face 'mode-line-buffer-id))
+      (propertize name 'face 'mode-line-buffer-id))))
+
+(my/mode-line--strip-legacy-nerd-icons)
+(setq mode-line-buffer-identification
+      '((:eval (my/mode-line-buffer-identification))))
+
+(add-hook 'dired-mode-hook #'nerd-icons-dired-mode)
+(add-hook 'ibuffer-mode-hook #'nerd-icons-ibuffer-mode)
+
+(defun my/nerd-icons-buffer-menu--inject-icons (&rest _)
+  (when (derived-mode-p 'Buffer-menu-mode)
+    (mapc (lambda (entry)
+            (let ((buf (car entry))
+                  (vec (cadr entry)))
+              (when (buffer-live-p buf)
+                (with-current-buffer buf
+                  (let ((icon (my/nerd-icons-file-icon)))
+                    (when icon
+                      (aset vec 3 (concat icon " " (aref vec 3)))))))))
+          tabulated-list-entries)))
+
+(advice-add 'list-buffers--refresh :after #'my/nerd-icons-buffer-menu--inject-icons)
+
 ;; Size for new GUI frames.  Must be set before a display exists (emacs
 ;; --fg-daemon loads init with (display-graphic-p) nil).
 (add-to-list 'default-frame-alist '(width . 140))
@@ -613,5 +668,5 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
  '(package-selected-packages
    '(ace-window company counsel diff-hl docker docker-compose-mode
                 docker-tramp dockerfile-mode flycheck goto-chg
-                gruvbox-theme magit markdown-mode projectile speechd-el vterm
-                yasnippet zenburn-theme)))
+                gruvbox-theme magit markdown-mode nerd-icons nerd-icons-dired
+                nerd-icons-ibuffer projectile speechd-el vterm yasnippet zenburn-theme)))
