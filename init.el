@@ -39,6 +39,11 @@
       (package-refresh-contents))
     (package-install pkg)))
 
+;; Shell PATH in GUI/daemon Emacs (often narrower than login session).
+(my/ensure-package 'exec-path-from-shell)
+(require 'exec-path-from-shell)
+(exec-path-from-shell-copy-env "PATH")
+
 ;; Theme + highlight current line and the active window in splits.
 (my/ensure-package 'gruvbox-theme)
 (load-theme 'gruvbox-dark-medium t)
@@ -759,6 +764,6 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
  ;; If there is more than one, they won't work right.
  '(package-selected-packages
    '(ace-window company diff-hl docker docker-compose-mode
-                dockerfile-mode flycheck goto-chg
+                dockerfile-mode exec-path-from-shell flycheck goto-chg
                 gruvbox-theme magit markdown-mode nerd-icons nerd-icons-dired
                 nerd-icons-ibuffer speechd-el vterm yasnippet zenburn-theme)))
