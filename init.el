@@ -200,6 +200,30 @@
 (setq vterm-max-scrollback 10000)
 (setq vterm-shell (or (getenv "SHELL") "/bin/bash"))
 
+(defun my/vterm-setup-cursor ()
+  "Orange box cursor in vterm.
+
+Bash/readline sends DECSCUSR (bar) and libvterm overrides `cursor-type';
+`my/vterm--filter-enforce-cursor' keeps box after each redraw."
+  (face-remap-add-relative 'cursor '(:background "#fe8019"))
+  (setq cursor-type 'box)
+  (run-with-timer 0.2 nil
+                  (lambda ()
+                    (when (derived-mode-p 'vterm-mode)
+                      (vterm-send-string "\e[2 q")))))
+
+(defun my/vterm--filter-enforce-cursor (orig proc input)
+  (let ((buf (process-buffer proc)))
+    (prog1 (funcall orig proc input)
+      (when (buffer-live-p buf)
+        (with-current-buffer buf
+          (unless (eq cursor-type 'box)
+            (setq cursor-type 'box))))))
+
+(advice-add 'vterm--filter :around #'my/vterm--filter-enforce-cursor)
+
+(add-hook 'vterm-mode-hook #'my/vterm-setup-cursor)
+
 (defun my/vterm ()
   "Open a vterm in `default-directory'."
   (interactive)
