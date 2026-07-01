@@ -160,8 +160,27 @@
 
 ;; Size for new GUI frames.  Must be set before a display exists (emacs
 ;; --fg-daemon loads init with (display-graphic-p) nil).
-(add-to-list 'default-frame-alist '(width . 140))
-(add-to-list 'default-frame-alist '(height . 40))
+(defun my/tiling-wm-p ()
+  "Non-nil when cortile (or EMACS_TILING_WM) tiles outer Emacs frames."
+  (or (getenv "EMACS_TILING_WM")
+      (file-exists-p "/tmp/cortile.lock")))
+
+(unless (my/tiling-wm-p)
+  (add-to-list 'default-frame-alist '(width . 140))
+  (add-to-list 'default-frame-alist '(height . 40)))
+
+(defun my/tiling-wm--inhibit-frame-geometry (orig &rest args)
+  "Let cortile own position/size; Emacs only manages internal windows."
+  (unless (my/tiling-wm-p)
+    (apply orig args)))
+
+(dolist (fn '(set-frame-position set-frame-size adjust-frame-size))
+  (advice-add fn :around #'my/tiling-wm--inhibit-frame-geometry))
+
+(defun my/tiling-wm--frame-hook (frame)
+  (when (my/tiling-wm-p)
+    (modify-frame-parameters frame '((fullscreen . nil)))))
+(add-hook 'after-make-frame-functions #'my/tiling-wm--frame-hook)
 
 ;; Hint: available keys after a prefix (C-x, C-c, …). Not M-x command names.
 (my/ensure-package 'which-key)
@@ -529,14 +548,15 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
 
 (defun my/desktop-clamp-frame-positions ()
   "Keep saved frame coords on-screen (avoids `left + -10' in .emacs.desktop)."
-  (dolist (frame (my/desktop-gui-frames))
-    (let* ((pos (frame-position frame))
-           (left (car pos))
-           (top (cdr pos)))
-      (when (or (not (numberp left)) (< left 0) (>= left 1600)
-                (not (numberp top)) (< top 0))
-        (set-frame-position frame (max 0 (if (numberp left) left 100))
-                            (max 0 (if (numberp top) top 100)))))))
+  (unless (my/tiling-wm-p)
+    (dolist (frame (my/desktop-gui-frames))
+      (let* ((pos (frame-position frame))
+             (left (car pos))
+             (top (cdr pos)))
+        (when (or (not (numberp left)) (< left 0) (>= left 1600)
+                  (not (numberp top)) (< top 0))
+          (set-frame-position frame (max 0 (if (numberp left) left 100))
+                              (max 0 (if (numberp top) top 100))))))))
 
 (with-eval-after-load 'desktop
   (advice-add #'desktop-save :around #'my/desktop-save-guard)
@@ -550,7 +570,8 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
 (defun my/desktop-show-frame (frame)
   (when (my/desktop-gui-frame-p frame)
     (modify-frame-parameters frame '((visibility . t)))
-    (raise-frame frame)))
+    (unless (my/tiling-wm-p)
+      (raise-frame frame))))
 
 (defun my/desktop-show-frame-ready (frame)
   "Show FRAME on the next idle tick, after splits and faces are painted."
@@ -599,6 +620,9 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
         (when (and (not (eq frame best-frame))
                    (my/desktop-scratch-frame-p frame))
           (ignore-errors (delete-frame frame))))
+      (when (my/tiling-wm-p)
+        (dolist (frame gui-frames)
+          (modify-frame-parameters frame '((fullscreen . nil)))))
       (my/reapply-init-gui-settings)
       (when best-frame
         (ignore-errors
@@ -668,7 +692,7 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
         (my/desktop-enable frame)))))
 
 (with-eval-after-load 'server
-  (setq server-raise-frame t)
+  (setq server-raise-frame (not (my/tiling-wm-p)))
   (add-hook 'server-after-make-frame-hook #'my/desktop-enable-server-frame))
 (when (and (display-graphic-p) (not noninteractive) (not (daemonp)))
   (my/desktop-enable))

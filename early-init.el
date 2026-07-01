@@ -10,3 +10,7 @@
   (when (and (file-exists-p init) (file-exists-p elc)
              (file-newer-than-file-p init elc))
     (delete-file elc)))
+
+;; Tiling WM (cortile): Emacs must not ask X11 to resize/move the outer frame.
+(setq frame-inhibit-implied-resize 'force
+      frame-resize-pixelwise t)
