@@ -755,8 +755,10 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
   (with-temp-buffer
     (insert-file-contents user-init-file)
     (goto-char (point-min))
+    (skip-chars-forward " \t\n\r")
     (while (< (point) (point-max))
-      (read (current-buffer)))))
+      (read (current-buffer))
+      (skip-chars-forward " \t\n\r"))))
 
 (defun my/eval-init-el ()
   "Save and evaluate init.el; drop init.elc so restart matches the buffer."
