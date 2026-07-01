@@ -15,10 +15,23 @@ emacsclient -c
 ## Каждый день
 
 ```bash
-emacsclient -c              # новое окно (desktop восстановится)
-emacsclient -c FILE           # открыть файл
-systemctl --user restart emacs.service
+emacsclient -c                    # новое окно (desktop восстановится)
+emacsclient -c FILE               # открыть файл
 ```
+
+## Перезапуск
+
+```bash
+# Полный перезапуск daemon (новый init.el, desktop сохранится и восстановится):
+systemctl --user restart emacs && emacsclient -c
+
+# Только подтянуть init.el, daemon не трогать (C-c C-c в init.el то же самое):
+emacsclient -e '(load user-init-file t t)'
+```
+
+Перед `restart` сохраните правки в файлах (`C-x C-s` или `C-x s`), иначе
+несохранённое в буферах может потеряться. `M-x save-buffers-kill-emacs` daemon
+не нужен — он делает то же, что остановка сервиса, но менее предсказуемо.
 
 Не запускайте `emacs --daemon` вручную — только systemd.
 

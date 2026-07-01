@@ -1,6 +1,7 @@
 ;;; init.el --- Minimal Emacs config  -*- lexical-binding: t; -*-
 
 ;; Prefer init.el over init.elc when the source is newer (stale .elc bites).
+;; Must be set in early-init.el too — Emacs chooses .el/.elc before init.el runs.
 (setq load-prefer-newer t)
 
 ;; Goal: keep the configuration as small and reproducible as possible.
@@ -102,6 +103,7 @@
   (force-mode-line-update t))
 
 (add-hook 'after-make-frame-functions #'my/reapply-init-gui-frame)
+(add-hook 'emacs-startup-hook #'my/reapply-init-gui-settings)
 
 ;; File-type icons (Nerd Font glyphs, not emoji).  GUI only.
 (my/ensure-package 'nerd-icons)
@@ -223,7 +225,7 @@ Bash/readline sends DECSCUSR (bar) and libvterm overrides `cursor-type';
       (when (buffer-live-p buf)
         (with-current-buffer buf
           (unless (eq cursor-type 'box)
-            (setq cursor-type 'box))))))
+            (setq cursor-type 'box)))))))
 
 (advice-add 'vterm--filter :around #'my/vterm--filter-enforce-cursor)
 
@@ -477,6 +479,14 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
 (setq kept-old-versions 5)
 
 ;; Desktop session: ~/.emacs.d/.emacs.desktop
+;;
+;; Restart (daemon + desktop restore):
+;;   systemctl --user restart emacs && emacsclient -c
+;; Reload init.el only (no daemon restart): C-c C-c in init.el, or
+;;   emacsclient -e '(load user-init-file t t)'
+;; Avoid M-x save-buffers-kill-emacs — it stops the daemon like restart, but
+;; is easier to hit with desktop-save-mode off or a broken init.el.
+;;
 ;; With `emacs --daemon', enable desktop-save on the first emacsclient -c frame.
 ;; desktop-read must run with that client frame *selected*; otherwise
 ;; `desktop-restoring-frameset-p' is nil and only *scratch* comes back.
@@ -496,19 +506,26 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
 (defvar my/desktop--after-restored nil)
 (defvar my/desktop--restore-ok nil)
 
+(defun my/desktop-buffer-worth-saving-p (buf)
+  "Non-nil when BUF is worth a desktop snapshot (not just *scratch*)."
+  (with-current-buffer buf
+    (or (buffer-file-name)
+        (and (derived-mode-p 'dired-mode) dired-directory)
+        (derived-mode-p 'magit-mode)
+        (derived-mode-p 'vterm-mode))))
+
 (defun my/desktop-save-ok-p ()
-  "True when at least one on-screen window shows a file-visiting buffer."
+  "True when at least one visible window shows a meaningful buffer."
   (seq-find (lambda (buf)
               (and (get-buffer-window buf t)
-                   (buffer-file-name buf)))
+                   (my/desktop-buffer-worth-saving-p buf)))
             (buffer-list)))
 
 (defun my/desktop-save-guard (orig dir &optional release only-if-changed version)
   "Do not overwrite .emacs.desktop with scratch/*Warnings* garbage."
   (if (my/desktop-save-ok-p)
       (apply orig dir release only-if-changed version)
-    (when (called-interactively-p 'interactive)
-      (message "Desktop save skipped (no file buffers in windows)"))))
+    (message "Desktop save skipped (no file/dired/magit/vterm in windows)")))
 
 (defun my/desktop-clamp-frame-positions ()
   "Keep saved frame coords on-screen (avoids `left + -10' in .emacs.desktop)."
@@ -586,8 +603,11 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
       (when best-frame
         (ignore-errors
           (my/desktop-show-frame-ready best-frame)))
-      (setq my/desktop--restore-ok t)
-      (desktop-save-mode 1))))
+      (setq my/desktop--restore-ok t))))
+
+(defun my/desktop-enable-save-mode ()
+  "Turn on desktop autosave and save-on-exit for this daemon session."
+  (desktop-save-mode 1))
 
 (defun my/desktop-file ()
   (expand-file-name ".emacs.desktop" user-emacs-directory))
@@ -618,7 +638,7 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
     (setq my/desktop--restore-ok nil)
     (my/desktop-clear-stale-lock)
     (my/desktop-purge-zombie-frames)
-    ;; Autosave stays off until restore succeeds or first real session starts.
+    ;; Off only during desktop-read; on again at the end (even if restore failed).
     (setq desktop-save-mode nil)
     (add-hook 'desktop-after-read-hook #'my/desktop-after-restore)
     (when client-frame
@@ -635,10 +655,9 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
                  (setq my/desktop--after-restored t))))
           (unless my/desktop--after-restored
             (my/desktop-show-frame-ready (or client-frame (selected-frame)))))
-      (progn
-        (when client-frame
-          (my/desktop-show-frame-ready client-frame))
-        (desktop-save-mode 1)))))
+      (when client-frame
+        (my/desktop-show-frame-ready client-frame)))
+    (my/desktop-enable-save-mode)))
 
 (defun my/desktop-enable-server-frame ()
   "First emacsclient GUI frame restores desktop; later ones show immediately."
@@ -731,12 +750,24 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
                   ad-Advice-eval-buffer))
     (advice-remove 'eval-buffer sym)))
 
+(defun my/init-el-check-syntax ()
+  "Signal an error when user-init-file does not parse."
+  (with-temp-buffer
+    (insert-file-contents user-init-file)
+    (goto-char (point-min))
+    (while (< (point) (point-max))
+      (read (current-buffer)))))
+
 (defun my/eval-init-el ()
   "Save and evaluate init.el; drop init.elc so restart matches the buffer."
   (interactive)
   (unless (my/init-el-p)
     (user-error "Not in %s" user-init-file))
   (my/init-el-remove-eval-advice)
+  (condition-case err
+      (my/init-el-check-syntax)
+    (error
+      (user-error "init.el syntax error (not evaluated): %S" err)))
   (condition-case err
       (progn
         (save-buffer)
