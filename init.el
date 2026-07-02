@@ -163,7 +163,8 @@
 (defun my/tiling-wm-p ()
   "Non-nil when cortile (or EMACS_TILING_WM) tiles outer Emacs frames."
   (or (getenv "EMACS_TILING_WM")
-      (file-exists-p "/tmp/cortile.lock")))
+      (and (executable-find "pgrep")
+           (= 0 (call-process "pgrep" nil nil nil "-x" "cortile")))))
 
 (unless (my/tiling-wm-p)
   (add-to-list 'default-frame-alist '(width . 140))
@@ -196,26 +197,37 @@
 (global-unset-key (kbd "C-h C-h"))
 
 ;; Speech Dispatcher: RHVoice + Russian language.
+;; Open only with speechd-speak-mode — startup speechd-open kept RHVoice on
+;; PulseAudio and caused speaker pops when Alt+Tab focused Emacs.
 (my/ensure-package 'speechd-el)
 (require 'speechd)
 
 (setq speechd-language "ru")
-(with-eval-after-load 'speechd
-  ;; Connection settings apply only after opening (or reopening) a connection.
-  (ignore-errors
-    (speechd-open nil :quiet t :force-reopen t)
-    (speechd-set-output-module "rhvoice")
-    (speechd-set-language speechd-language)
-    (speechd-set-rate 40)  ;; быстрее/медленнее
-    (speechd-set-pitch 30)  ;; выше/ниже
-    (speechd-set-volume 100)
-    (speechd-set-synthesizer-voice "Aleksandr")  ;; из списка M-x speechd-set-synthesizer-voice
-  )
-)
+
+(defvar my/speechd-configured nil
+  "Non-nil after `my/speechd-ensure' configured RHVoice.")
+
+(defun my/speechd-ensure ()
+  "Connect to Speech Dispatcher and configure RHVoice (once)."
+  (unless my/speechd-configured
+    (ignore-errors
+      (speechd-open nil :quiet t :force-reopen t)
+      (speechd-set-output-module "rhvoice")
+      (speechd-set-language speechd-language)
+      (speechd-set-rate 40)
+      (speechd-set-pitch 30)
+      (speechd-set-volume 100)
+      (speechd-set-synthesizer-voice "Aleksandr")
+      (setq my/speechd-configured t))))
+
+(defun my/speechd-on-speak-mode ()
+  (when speechd-speak-mode
+    (my/speechd-ensure)))
 
 ;; Optional: enable a "talking Emacs" minor mode.
 ;; Toggle with: M-x speechd-speak-mode
 (require 'speechd-speak)
+(add-hook 'speechd-speak-mode-hook #'my/speechd-on-speak-mode)
 ;; Uncomment if you want it always on:
 ;; (speechd-speak-mode 1)
 ;; (speechd-speak)   ;; включает global-speechd-speak-mode
