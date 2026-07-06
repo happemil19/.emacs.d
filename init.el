@@ -282,6 +282,19 @@ Bash/readline sends DECSCUSR (bar) and libvterm overrides `cursor-type';
 
 (require 'tramp-container)
 
+;; PICO-8: .p8 cartridges (Kaali/pico8-mode + porcow/shanecelis/broquaint patches).
+(my/ensure-package 'lua-mode)
+(add-to-list 'load-path (expand-file-name "pico8-mode" user-emacs-directory))
+(require 'pico8-mode)
+(setq pico8-use-font t)
+(add-to-list 'auto-mode-alist '("\\.p8\\'" . pico8-mode))
+(when-let ((exe (executable-find "pico8")))
+  (setq pico8-executable-path (file-truename exe))
+  (let ((manual (expand-file-name "pico-8_manual.txt"
+                                  (file-name-directory pico8-executable-path))))
+    (when (file-readable-p manual)
+      (setq pico8-documentation-file manual))))
+
 ;; Markdown: gfm-mode for .md.  Browser: C-c C-c p; live: C-c C-c l.
 (defvar my/markdown-preview-css
   (expand-file-name "markdown/preview.css" user-emacs-directory))
