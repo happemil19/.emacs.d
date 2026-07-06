@@ -152,6 +152,11 @@ This adds additional leading between lines."
   :type 'string
   :group 'pico8)
 
+(defcustom pico8-editor-user-fn "#ffa300"
+  "User-defined function color (definition and call sites)."
+  :type 'string
+  :group 'pico8)
+
 (defcustom pico8-editor-kw "#ff77a8"
   "Keyword color used for PICO-8 editor-like styling."
   :type 'string
@@ -243,7 +248,7 @@ This adds additional leading between lines."
                                  `(:foreground ,pico8-editor-blue))
         pico8--face-remaps)
   (push (face-remap-add-relative 'font-lock-function-name-face
-                                 `(:foreground ,pico8-editor-fn))
+                                 `(:foreground ,pico8-editor-user-fn))
         pico8--face-remaps)
   (push (face-remap-add-relative 'font-lock-keyword-face
                                  `(:foreground ,pico8-editor-kw :weight bold))
@@ -321,6 +326,12 @@ This adds additional leading between lines."
     ("line" "x0 y0 x1 y1 [col]")
     ("rect" "x0 y0 x1 y1 [col]")
     ("rectfill" "x0 y0 x1 y1 [col]")
+    ("rrect" "x y w h r [col]")
+    ("rrectfill" "x y w h r [col]")
+    ("oval" "x0 y0 x1 y1 [col]")
+    ("ovalfill" "x0 y0 x1 y1 [col]")
+    ("tline" "x0 y0 x1 y1 mx my md [col]")
+    ("flip" "x y")
     ("pal" "c0 c1 [p]")
     ("palt" "c t")
     ("spr" "n x y [w h] [flip_x] [flip_y]")
@@ -340,6 +351,8 @@ This adds additional leading between lines."
     ("map" "cel_x cel_y sx sy cel_w cel_h [layer]")
     ("peek" "addr")
     ("poke" "addr val")
+    ("peek2" "addr")
+    ("poke2" "addr val")
     ("peek4" "addr")
     ("poke4" "addr val")
     ("memcpy" "dest_addr source_addr len")
@@ -369,9 +382,14 @@ This adds additional leading between lines."
     ("lshr" "x n" "Logical shift right")
     ("menuitem" "Index [label callback]")
     ("sub" "s a b")
+    ("split" "str [separator [convert_numbers]]")
     ("type" "val")
     ("tostr" "val [hex]")
     ("tonum" "val")
+    ("chr" "n")
+    ("ord" "str [index]")
+    ("count" "val")
+    ("deli" "str [separator [index]]")
     ("cartdata" "id")
     ("dget" "index")
     ("dset" "index value")
@@ -380,7 +398,25 @@ This adds additional leading between lines."
     ("cocreate" "f")
     ("coresume" "c [p0 p1 ..]")
     ("costatus" "c")
-    ("yield" "" "Yield coroutine execution")))
+    ("yield" "" "Yield coroutine execution")
+    ;; System / runtime
+    ("load" "filename [breadcrumb [param_str]]")
+    ("save" "filename")
+    ("run" "[param_str]")
+    ("stop" "[message]")
+    ("reset" "")
+    ("info" "")
+    ("assert" "condition [message]")
+    ("ls" "[directory]")
+    ("stat" "idx")
+    ("time" "")
+    ("extcmd" "cmd")
+    ("serial" "str")
+    ;; Raw table access (PICO-8 Lua subset)
+    ("rawget" "t key")
+    ("rawset" "t key val")
+    ("rawequal" "a b")
+    ("rawlen" "t")))
 
 (defconst pico8--palette
   (concat "\"0 c #000000\",\n"
@@ -425,8 +461,15 @@ This adds additional leading between lines."
 
 (defconst pico8--builtins-regex
   (concat "\\_<"
-          (regexp-opt pico8--builtins-symbols t)
+          (regexp-opt (append pico8--builtins-symbols
+                              (mapcar #'upcase pico8--builtins-symbols)))
           "\\_>"))
+
+(defconst pico8--user-fn-call-pattern
+  (concat (rx symbol-start
+                (group (seq (any "A-Za-z_") (* (any "A-Za-z0-9_"))))
+                (* (any " \t")))
+          "("))
 
 (defun pico8--has-documentation-p ()
   "Is pico8-documentation-file set and does the file exits?"
@@ -471,8 +514,12 @@ Requires `pico8-documentation-file' to be set."
   "Return a modified `lua-font-lock-keywords'.
 
 - Remove the Lua builtin rule that matches `loadstring' (so PICO-8 can redefine it).
+- Keep user-defined function names at definition sites (`lua-funcheader').
+- Highlight call sites of functions defined in the buffer with `font-lock-function-name-face'.
 - Add PICO-8 builtins as `font-lock-builtin-face'.
-- Add number highlighting as `font-lock-string-face' (to match the PICO-8 editor)."
+- Add number highlighting as `font-lock-string-face' (to match the PICO-8 editor).
+
+Only names in `pico8--builtins-list' are highlighted as API functions."
   (let* ((without-builtins
           (seq-filter
            (lambda (x)
@@ -493,7 +540,10 @@ Requires `pico8-documentation-file' to be set."
                    (seq "." (+ (any "0-9"))))))))
     (append
      `(
-       (,pico8--builtins-regex 1 font-lock-builtin-face)
+       (,pico8--builtins-regex . font-lock-builtin-face)
+       (,pico8--user-fn-call-pattern
+        (1 (if (pico8--defined-function-p (match-string-no-properties 1))
+               'font-lock-function-name-face)))
        (,pico8--number-regex 1 font-lock-string-face)
        ("\\_<\\(?:[Tt][Rr][Uu][Ee]\\|[Ff][Aa][Ll][Ss][Ee]\\|[Nn][Ii][Ll]\\)\\_>"
         0 font-lock-string-face)
@@ -506,19 +556,7 @@ Requires `pico8-documentation-file' to be set."
              (group (seq (any "A-Za-z_") (* (any "A-Za-z0-9_"))))
              (* (any " \t"))
              "=")
-        1 font-lock-variable-name-face)
-       ;; Function call: name(...)
-       (,(rx (group (seq (any "A-Za-z_") (* (any "A-Za-z0-9_"))))
-             (* (any " \t"))
-             "(")
-        1 font-lock-function-name-face)
-       ;; Method/field call: obj.method(...) / obj:method(...)
-       (,(rx (any ".:")
-             (* (any " \t"))
-             (group (seq (any "A-Za-z_") (* (any "A-Za-z0-9_"))))
-             (* (any " \t"))
-             "(")
-        1 font-lock-function-name-face))
+        1 font-lock-variable-name-face))
      without-builtins
      ;; In the PICO-8 editor, ordinary identifiers are rendered in a muted
      ;; color (distinct from punctuation).  We approximate that by coloring
@@ -551,6 +589,32 @@ Requires `pico8-documentation-file' to be set."
 ;; this is copied from lua-mode.el to match its functionality
 (defconst pico8--lua-function-regex
   (lua-rx (or bol ";") ws (opt (seq (symbol "local") ws)) lua-funcheader))
+
+(defvar-local pico8--defined-function-names nil)
+(defvar-local pico8--defined-function-names-tick nil)
+
+(defun pico8--collect-defined-function-names ()
+  "Return a downcased list of user-defined function names in the buffer."
+  (let ((names '()))
+    (save-excursion
+      (save-restriction
+        (widen)
+        (goto-char (or pico8--lua-block-start 1))
+        (while (search-forward-regexp pico8--lua-function-regex
+                                      pico8--lua-block-end t)
+          (push (downcase (match-string-no-properties 1)) names))))
+    (delete-dups names)))
+
+(defun pico8--defined-function-names ()
+  "Return cached user-defined function names for the current buffer."
+  (unless (eq pico8--defined-function-names-tick (buffer-modified-tick))
+    (setq pico8--defined-function-names-tick (buffer-modified-tick))
+    (setq pico8--defined-function-names (pico8--collect-defined-function-names)))
+  pico8--defined-function-names)
+
+(defun pico8--defined-function-p (name)
+  "Return non-nil when NAME is defined as a function in the buffer."
+  (member (downcase name) (pico8--defined-function-names)))
 
 (defconst pico8--lua-variable-regex
   (lua-rx (or bol ";") ws (opt (seq (group-n 1 (symbol "local")) ws)) (group-n 2 lua-funcname) ws "="))
