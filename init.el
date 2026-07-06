@@ -754,6 +754,17 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
   (make-directory org-directory t)
   (find-file org-default-notes-file))
 
+(defun my/org-notes ()
+  "Open Org notes (~/org/notes.org)."
+  (interactive)
+  (make-directory org-directory t)
+  (find-file (expand-file-name "notes.org" org-directory)))
+
+(defun my/org-agenda-todos ()
+  "Org agenda: all TODO items (C-c a t)."
+  (interactive)
+  (org-agenda nil "t"))
+
 ;; Windows and buffers — home row under C-c (no arrow keys).
 ;; h/j/k/l: move between splits (like vim C-w).  n/p: prev/next buffer.  [/]: undo window layout.
 (require 'windmove)
@@ -769,8 +780,9 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
 (global-set-key (kbd "C-c [") #'winner-undo)
 (global-set-key (kbd "C-c ]") #'winner-redo)
 
-(global-set-key (kbd "C-c o") #'my/org-inbox)
-(global-set-key (kbd "C-c A") #'org-agenda)
+(global-set-key (kbd "C-c o") #'my/org-notes)
+(global-set-key (kbd "C-c i") #'my/org-inbox)
+(global-set-key (kbd "C-c a t") #'my/org-agenda-todos)
 (global-set-key (kbd "C-c r") #'recentf-open-files)
 
 ;; comment-line on C-c ; toggles line comments (C-u 3 affects three lines).

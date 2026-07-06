@@ -72,7 +72,7 @@ systemctl --user start emacs.service
 | `C-x g` | Magit для текущего репозитория |
 | `C-c r` | недавние файлы |
 | `C-c t` | vterm |
-| `C-c o` / `C-c A` | Org inbox / agenda |
+| `C-c o` / `C-c i` / `C-c a t` | Org notes / inbox / все задачи |
 | `C-c ;` | comment-line |
 | `C-c e` | открыть `init.el` |
 
