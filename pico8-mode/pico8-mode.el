@@ -119,6 +119,11 @@ cache via `fc-cache'."
   :type 'boolean
   :group 'pico8)
 
+(defcustom pico8-show-fill-column-indicator t
+  "If enabled with `pico8-set-column-fill', show a vertical line at column 32."
+  :type 'boolean
+  :group 'pico8)
+
 (defcustom pico8-indent-level 1
   "Number of spaces per indentation level in PICO-8 buffers."
   :type 'integer
@@ -180,6 +185,11 @@ This adds additional leading between lines."
 
 (defcustom pico8-editor-comment "#83769c"
   "Comment color used for PICO-8 editor-like styling."
+  :type 'string
+  :group 'pico8)
+
+(defcustom pico8-editor-fill-column "#5f574b"
+  "Fill-column guide color used for PICO-8 editor-like styling."
   :type 'string
   :group 'pico8)
 
@@ -293,6 +303,22 @@ This adds additional leading between lines."
     (setq-local pico8--cursor-sync-installed t)
     (add-hook 'post-command-hook #'pico8--sync-cursor nil t)
     (pico8--sync-cursor)))
+
+(defun pico8--setup-fill-column-indicator ()
+  "Show a subtle column-32 guide styled for PICO-8 buffers."
+  (when (and pico8-set-column-fill pico8-show-fill-column-indicator
+             (fboundp 'display-fill-column-indicator-mode))
+    ;; PICO-8 Patched renders ASCII `|' cleanly; box-drawing U+2502 does not.
+    (setq-local display-fill-column-indicator-character ?|)
+    (push (face-remap-add-relative 'fill-column-indicator
+                                   `(:inherit nil
+                                     :foreground ,pico8-editor-fill-column
+                                     :background ,pico8-editor-fill-column
+                                     :extend t
+                                     :weight normal
+                                     :slant normal))
+          pico8--face-remaps)
+    (display-fill-column-indicator-mode 1)))
 
 (defface pico8--non-lua-overlay
   '((((background light)) :foreground "grey90")
@@ -1053,7 +1079,8 @@ region."
     (add-hook 'after-revert-hook 'pico8--create-image-overlays)
     (pico8--create-image-overlays))
   (when pico8-set-column-fill
-    (set-fill-column 32))
+    (set-fill-column 32)
+    (pico8--setup-fill-column-indicator))
   (when pico8-use-font
     (if (find-font (font-spec :family pico8-font-family))
         (progn
