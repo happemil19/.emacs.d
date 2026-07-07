@@ -232,6 +232,7 @@ This adds additional leading between lines."
 
 (defvar-local pico8--face-remaps nil)
 (defvar-local pico8--cursor-sync-installed nil)
+(defvar pico8--cursor-sync-global-installed nil)
 
 (defun pico8--cursor-save-frame-state (frame)
   (unless (frame-parameter frame 'pico8--saved-cursor-color)
@@ -324,9 +325,13 @@ This adds additional leading between lines."
     (when pico8-editor-blink-forever
       (setq-local blink-cursor-blinks 0))
     (blink-cursor-mode 1)
-    ;; Keep cursor in sync while this buffer is active.
+    ;; Mark this buffer as a PICO-8 cursor owner.
     (setq-local pico8--cursor-sync-installed t)
-    (add-hook 'post-command-hook #'pico8--sync-cursor nil t)
+    ;; Cursor settings are frame-level; use a global hook so we also restore
+    ;; them when the user switches away from a pico8 buffer.
+    (unless pico8--cursor-sync-global-installed
+      (setq pico8--cursor-sync-global-installed t)
+      (add-hook 'post-command-hook #'pico8--sync-cursor))
     (pico8--sync-cursor)))
 
 (defun pico8--editor-fill-column-color ()
