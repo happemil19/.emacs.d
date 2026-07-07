@@ -60,6 +60,16 @@ Enables documentation annotations with eldoc and company"
   :type 'boolean
   :group 'pico8)
 
+(defcustom pico8-readonly-non-lua-sections t
+  "If enabled, make all sections outside __lua__ read-only."
+  :type 'boolean
+  :group 'pico8)
+
+(defcustom pico8-goto-lua-on-open t
+  "If enabled, move point to the __lua__ section when a cartridge is opened."
+  :type 'boolean
+  :group 'pico8)
+
 (defcustom pico8-create-images t
   "If enabled, then image data is rendered inline."
   :type 'boolean
@@ -108,6 +118,12 @@ cache via `fc-cache'."
   "If enabled, set column fill to 32. This represents what can be shown on one line in the pico-8 application."
   :type 'boolean
   :group 'pico8)
+
+(defcustom pico8-indent-level 1
+  "Number of spaces per indentation level in PICO-8 buffers."
+  :type 'integer
+  :group 'pico8
+  :safe #'integerp)
 
 (defcustom pico8-line-spacing 0.25
   "Extra line spacing for `pico8-mode' when `pico8-use-font' is enabled.
@@ -292,6 +308,9 @@ This adds additional leading between lines."
 
 (defvar pico8--lua-block-end-tag nil "")
 (make-variable-buffer-local 'pico8--lua-block-end-tag)
+
+(defconst pico8--read-only-msg
+  "This PICO-8 cartridge section is read-only; edit __lua__ only.")
 
 (cl-defstruct (pico8-symbol (:constructor pico8-symbol--create))
   "A Lua symbol on pico8 mode."
@@ -813,8 +832,72 @@ Including Lua and pico8 built-ins."
                 (concat ": " doc))))))
 
 (defun pico8--put-non-lua-overlay (beg end)
-  "Put pico8 non-Lua overlay in region."
-  (overlay-put (make-overlay beg end) 'face 'pico8--non-lua-overlay))
+  "Put a non-Lua section overlay on region BEG END."
+  (let ((overlay (make-overlay beg end)))
+    (overlay-put overlay 'pico8-non-lua-section t)
+    (when pico8-dim-non-code-sections
+      (overlay-put overlay 'face 'pico8--non-lua-overlay))
+    overlay))
+
+(defun pico8--apply-non-lua-read-only-properties ()
+  "Mark non-Lua cartridge sections read-only at the text-property level."
+  (when pico8-readonly-non-lua-sections
+    (let ((inhibit-read-only t)
+          (inhibit-modification-hooks t))
+      (remove-list-of-text-properties (point-min) (point-max)
+                                        '(read-only nil
+                                          rear-nonsticky nil
+                                          front-sticky nil))
+      (when pico8--lua-block-start
+        (put-text-property (point-min) pico8--lua-block-start
+                           'read-only pico8--read-only-msg)
+        (put-text-property (point-min) pico8--lua-block-start
+                           'rear-nonsticky '(read-only))
+        (put-text-property (point-min) pico8--lua-block-start
+                           'front-sticky '(read-only)))
+      (when pico8--lua-block-end
+        (put-text-property pico8--lua-block-end (point-max)
+                           'read-only pico8--read-only-msg)
+        (put-text-property pico8--lua-block-end (point-max)
+                           'front-sticky '(read-only))))))
+
+(defun pico8--refresh-non-lua-section-overlays ()
+  "Update dimming/read-only overlays for non-Lua cartridge sections."
+  (when (or pico8-dim-non-code-sections pico8-readonly-non-lua-sections)
+    (remove-overlays (point-min) (point-max) 'pico8-non-lua-section t)
+    (when pico8--lua-block-start
+      (pico8--put-non-lua-overlay (point-min) pico8--lua-block-start))
+    (when pico8--lua-block-end
+      (pico8--put-non-lua-overlay pico8--lua-block-end (point-max)))))
+
+(defun pico8--in-lua-block-p (&optional pos)
+  "Return non-nil if POS is inside the __lua__ section."
+  (let ((pos (or pos (point))))
+    (and pico8--lua-block-start
+         (>= pos pico8--lua-block-start)
+         (or (not pico8--lua-block-end)
+             (< pos pico8--lua-block-end)))))
+
+(defun pico8--goto-lua-section ()
+  "Move point to the start of the __lua__ section."
+  (when (and pico8--lua-block-start (not (pico8--in-lua-block-p)))
+    (goto-char pico8--lua-block-start)))
+
+(defun pico8--setup-cartridge-buffer ()
+  "Scan __lua__ boundaries and apply section UI restrictions."
+  (pico8--scan-for-lua-block-in-region (point-min) (point-max))
+  (pico8--refresh-non-lua-section-overlays)
+  (pico8--apply-non-lua-read-only-properties)
+  (when pico8-goto-lua-on-open
+    (pico8--goto-lua-section)))
+
+(defun pico8--setup-cartridge-buffer-deferred ()
+  "Like `pico8--setup-cartridge-buffer', but after find-file hooks finish."
+  (run-at-time 0 nil #'pico8--setup-cartridge-buffer))
+
+(defun pico8--find-file-setup ()
+  (when (derived-mode-p 'pico8-mode)
+    (pico8--setup-cartridge-buffer-deferred)))
 
 (defun pico8--do-scan-for-lua-block-in-region (beg end)
   "Actually run the scan for pico8--scan-for-lua-block-in-region"
@@ -830,18 +913,12 @@ Including Lua and pico8 built-ins."
           (setq pico8--lua-block-end-tag (match-string-no-properties 1))
           (setq pico8--lua-block-end (match-beginning 0)))))))
 
-(defun pico8--scan-for-lua-block-in-region (beg end)
-  "Try to find lua block in the region.
-If a __lua__ line is found, then that is set as the start for a
-lua block. If other __def__ lines are found, they might be chosen
-as an end position for the lua block."
-  (when (and pico8--lua-block-start (<= beg pico8--lua-block-start end))
-    (setq pico8--lua-block-start nil))
-  (when (and pico8--lua-block-end (<= beg pico8--lua-block-end end))
-    (setq pico8--lua-block-end nil))
-  (pico8--do-scan-for-lua-block-in-region beg end)
-  (unless (and pico8--lua-block-start pico8--lua-block-end)
-    (pico8--do-scan-for-lua-block-in-region (point-min) (point-max))))
+(defun pico8--scan-for-lua-block-in-region (_beg _end)
+  "Rescan the buffer and record the __lua__ section boundaries."
+  (setq pico8--lua-block-start nil
+        pico8--lua-block-end nil
+        pico8--lua-block-end-tag nil)
+  (pico8--do-scan-for-lua-block-in-region (point-min) (point-max)))
 
 (defun pico8--line-length (point)
   "Get line length at `point'"
@@ -920,14 +997,8 @@ Sets an overlay on non-Lua code. And also keeps track of lua code
 region."
   (lua--propertize-multiline-bounds beg end)
   (pico8--scan-for-lua-block-in-region beg end)
-  ;; TODO: Revamp
-  (when pico8-dim-non-code-sections
-    (remove-overlays (point-min) (point-max) 'face 'pico8--non-lua-overlay)
-    (when pico8--lua-block-start
-      (pico8--put-non-lua-overlay (point-min) pico8--lua-block-start))
-    (when pico8--lua-block-end
-      (pico8--put-non-lua-overlay pico8--lua-block-end (point-max)))
-    ))
+  (pico8--refresh-non-lua-section-overlays)
+  (pico8--apply-non-lua-read-only-properties))
 
 (defvar pico8--process nil
   "The currently running PICO-8 process")
@@ -967,6 +1038,12 @@ region."
   (add-to-list 'completion-at-point-functions #'pico8--completion-at-point)
   (setq-local eldoc-documentation-function #'pico8--eldoc-documentation)
   (setq-local syntax-propertize-function #'pico8--syntax-propertize)
+  (setq-local indent-tabs-mode nil)
+  (setq-local lua-indent-level pico8-indent-level)
+  (add-hook 'font-lock-after-fontify-hook
+            #'pico8--apply-non-lua-read-only-properties nil t)
+  (add-hook 'after-revert-hook #'pico8--setup-cartridge-buffer nil t)
+  (pico8--setup-cartridge-buffer-deferred)
   (when (pico8--has-documentation-p)
     (pico8-build-documentation))
   (when (and pico8-create-images
@@ -990,6 +1067,8 @@ region."
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.p8\\'" . pico8-mode))
+
+(add-hook 'find-file-hook #'pico8--find-file-setup)
 
 (provide 'pico8-mode)
 
