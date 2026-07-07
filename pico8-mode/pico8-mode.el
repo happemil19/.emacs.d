@@ -114,14 +114,21 @@ cache via `fc-cache'."
       (call-process "fc-cache" nil 0 nil "-f" target-dir))
     (message "Installed font to %s (restart GUI Emacs to pick up font list)" target)))
 
-(defcustom pico8-set-column-fill t
-  "If enabled, set column fill to 32. This represents what can be shown on one line in the pico-8 application."
+(defcustom pico8-show-fill-column-indicator t
+  "If non-nil, show a vertical guide at column 32 in PICO-8 buffers."
   :type 'boolean
   :group 'pico8)
 
-(defcustom pico8-show-fill-column-indicator t
-  "If enabled with `pico8-set-column-fill', show a vertical line at column 32."
+(defcustom pico8-show-wrap-fringe-indicators t
+  "Show fringe arrows when long lines soft-wrap at the window edge."
   :type 'boolean
+  :group 'pico8)
+
+(defcustom pico8-wrap-fringe-indicators
+  '(left-curly-arrow right-curly-arrow)
+  "Fringe bitmaps for wrapped continuation lines in PICO-8 buffers."
+  :type '(list (choice (const :tag "Hide" nil) symbol)
+                (choice (const :tag "Hide" nil) symbol))
   :group 'pico8)
 
 (defcustom pico8-indent-level 1
@@ -188,9 +195,19 @@ This adds additional leading between lines."
   :type 'string
   :group 'pico8)
 
-(defcustom pico8-editor-fill-column "#5f574b"
-  "Fill-column guide color used for PICO-8 editor-like styling."
+(defcustom pico8-editor-selection "#ffec27"
+  "Background color for the active region in PICO-8 buffers."
   :type 'string
+  :group 'pico8)
+
+(defcustom pico8-editor-fill-column "#83769c"
+  "Color of the thin column-32 guide line (`pico8-editor-comment' by default)."
+  :type 'string
+  :group 'pico8)
+
+(defface pico8-fill-column-indicator
+  '((t :inherit nil :foreground "#83769c" :weight normal :slant normal))
+  "Face for the PICO-8 column-32 guide line."
   :group 'pico8)
 
 (defcustom pico8-editor-cursor "#ff004d"
@@ -285,6 +302,14 @@ This adds additional leading between lines."
   (push (face-remap-add-relative 'font-lock-comment-face
                                  `(:foreground ,pico8-editor-comment))
         pico8--face-remaps)
+  (push (face-remap-add-relative 'fringe
+                                 `(:background ,pico8-editor-bg))
+        pico8--face-remaps)
+  (push (face-remap-add-relative 'region
+                                 `(:inherit nil
+                                   :background ,pico8-editor-selection
+                                   :extend t))
+        pico8--face-remaps)
   ;; Cursor: background only, keep glyph color (where supported).
   (push (face-remap-add-relative 'cursor
                                  `(:background ,pico8-editor-cursor
@@ -304,21 +329,40 @@ This adds additional leading between lines."
     (add-hook 'post-command-hook #'pico8--sync-cursor nil t)
     (pico8--sync-cursor)))
 
+(defun pico8--editor-fill-column-color ()
+  "Return the column-32 guide color."
+  pico8-editor-fill-column)
+
+(defun pico8--fill-column-indicator-face-spec ()
+  (let ((guide (pico8--editor-fill-column-color)))
+    `(:inherit nil :foreground ,guide :weight normal :slant normal)))
+
 (defun pico8--setup-fill-column-indicator ()
-  "Show a subtle column-32 guide styled for PICO-8 buffers."
-  (when (and pico8-set-column-fill pico8-show-fill-column-indicator
-             (fboundp 'display-fill-column-indicator-mode))
+  "Show a subtle column-32 guide in PICO-8 buffers."
+  (when (and pico8-show-fill-column-indicator
+             (require 'display-fill-column-indicator nil t))
+    (setq-local display-fill-column-indicator-column 32)
     ;; PICO-8 Patched renders ASCII `|' cleanly; box-drawing U+2502 does not.
     (setq-local display-fill-column-indicator-character ?|)
     (push (face-remap-add-relative 'fill-column-indicator
-                                   `(:inherit nil
-                                     :foreground ,pico8-editor-fill-column
-                                     :background ,pico8-editor-fill-column
-                                     :extend t
-                                     :weight normal
-                                     :slant normal))
+                                   (pico8--fill-column-indicator-face-spec))
           pico8--face-remaps)
     (display-fill-column-indicator-mode 1)))
+
+(defun pico8--set-wrap-fringe-indicators ()
+  "Show fringe arrows on soft-wrapped continuation lines."
+  (when pico8-show-wrap-fringe-indicators
+    (setq-local fringe-indicator-alist
+                (cons (cons 'continuation pico8-wrap-fringe-indicators)
+                      (assq-delete-all 'continuation fringe-indicator-alist)))))
+
+(defun pico8--setup-wrap-indicators ()
+  "Restore fringe continuation arrows hidden by `visual-line-mode'."
+  (when pico8-show-wrap-fringe-indicators
+    (setq-local truncate-lines nil)
+    (pico8--set-wrap-fringe-indicators)
+    ;; global-visual-line-mode may enable after `pico8-mode'.
+    (add-hook 'visual-line-mode-hook #'pico8--set-wrap-fringe-indicators nil t)))
 
 (defface pico8--non-lua-overlay
   '((((background light)) :foreground "grey90")
@@ -505,9 +549,11 @@ This adds additional leading between lines."
   (seq-map #'pico8-symbol-symbol pico8--builtins))
 
 (defconst pico8--builtins-regex
-  (concat "\\_<"
+  (concat "\\(?:^\\|[^A-Za-z_]\\)"
+          "\\("
           (regexp-opt (append pico8--builtins-symbols
                               (mapcar #'upcase pico8--builtins-symbols)))
+          "\\)"
           "\\_>"))
 
 (defconst pico8--user-fn-call-pattern
@@ -562,6 +608,7 @@ Requires `pico8-documentation-file' to be set."
 - Keep user-defined function names at definition sites (`lua-funcheader').
 - Highlight call sites of functions defined in the buffer with `font-lock-function-name-face'.
 - Add PICO-8 builtins as `font-lock-builtin-face'.
+- Builtin names may follow digits in minified lines (e.g. 11cls()).
 - Add number highlighting as `font-lock-string-face' (to match the PICO-8 editor).
 
 Only names in `pico8--builtins-list' are highlighted as API functions."
@@ -585,7 +632,7 @@ Only names in `pico8--builtins-list' are highlighted as API functions."
                    (seq "." (+ (any "0-9"))))))))
     (append
      `(
-       (,pico8--builtins-regex . font-lock-builtin-face)
+       (,pico8--builtins-regex 1 font-lock-builtin-face)
        (,pico8--user-fn-call-pattern
         (1 (if (pico8--defined-function-p (match-string-no-properties 1))
                'font-lock-function-name-face)))
@@ -1078,9 +1125,7 @@ region."
     (add-hook 'before-revert-hook 'pico8--remove-image-overlays)
     (add-hook 'after-revert-hook 'pico8--create-image-overlays)
     (pico8--create-image-overlays))
-  (when pico8-set-column-fill
-    (set-fill-column 32)
-    (pico8--setup-fill-column-indicator))
+  (pico8--setup-wrap-indicators)
   (when pico8-use-font
     (if (find-font (font-spec :family pico8-font-family))
         (progn
@@ -1090,7 +1135,8 @@ region."
           (setq-local line-spacing pico8-line-spacing)
           (buffer-face-mode))
       (message "No '%s' font installed. Available here: https://www.lexaloffle.com/bbs/?tid=3760"
-               pico8-font-family))))
+               pico8-font-family)))
+  (pico8--setup-fill-column-indicator))
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.p8\\'" . pico8-mode))
