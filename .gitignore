@@ -14,3 +14,4 @@
 *.eln
 *.elc
 *~
+/local.el

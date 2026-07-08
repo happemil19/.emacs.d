@@ -861,3 +861,6 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
                 dockerfile-mode exec-path-from-shell flycheck goto-chg
                 gruvbox-theme magit markdown-mode nerd-icons nerd-icons-dired
                 nerd-icons-ibuffer speechd-el vterm yasnippet zenburn-theme)))
+
+;; Личные настройки (не в git): скопируйте local.el.example -> local.el
+(load (expand-file-name "local.el" user-emacs-directory) t t)

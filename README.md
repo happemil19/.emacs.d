@@ -23,6 +23,18 @@ systemctl --user enable --now emacs.service
 
 Пакеты из GNU ELPA / MELPA подтягиваются при первом запуске (`my/ensure-package`).
 
+### Личные настройки (`local.el`)
+
+Файл `local.el` в `.gitignore` — для настроек, которые не должны попадать в репозиторий.
+Шаблон: `local.el.example`.
+
+```bash
+cp ~/.emacs.d/local.el.example ~/.emacs.d/local.el
+```
+
+В шаблоне — опциональная локальная обёртка для Magit в личных репозиториях.
+(нужен `~/.local/bin/git-commit-private` и `~/.gitconfig-personal`).
+
 Если `emacs` установлен не в `/usr/local/bin/`, поправьте `ExecStart` в
 `systemd/user/emacs.service` и `Exec=` в `desktop/*.desktop`, затем:
 

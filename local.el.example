@@ -1,0 +1,37 @@
+;;; local.el.example — личные настройки (не коммитить local.el)
+;;
+;;; Скопируйте в local.el и настройте под себя:
+;;;   cp ~/.emacs.d/local.el.example ~/.emacs.d/local.el
+;;
+;;; Требуется ~/.local/bin/git-commit-private и алиасы в ~/.gitconfig-personal.
+
+(defvar my/personal-github-remote-pattern "github\\.com[:/]<YOUR_GH_USER>/"
+  "Remote URL pattern for personal GitHub repos.
+Replace <YOUR_GH_USER> with your GitHub username.")
+
+(defun my/personal-github-repo-p ()
+  "Whether `default-directory' is a personal GitHub repo."
+  (let ((default-directory (or (and (fboundp 'magit-toplevel)
+                                    (magit-toplevel))
+                               default-directory)))
+    (and default-directory
+         (magit-get "remote.origin.url")
+         (string-match-p my/personal-github-remote-pattern
+                         (magit-get "remote.origin.url")))))
+
+(defun my/personal-commit-metadata-string ()
+  "Personal commit metadata value (see git-commit-private)."
+  (string-trim
+   (shell-command-to-string "bash ~/.local/bin/git-commit-private --print-date")))
+
+(with-eval-after-load 'magit
+  (defun my/magit-git-environment-personal-metadata (orig &rest args)
+    "Set personal git env vars for personal repos when committing via Magit."
+    (let ((env (apply orig args)))
+      (when (my/personal-github-repo-p)
+        (let ((date (my/personal-commit-metadata-string)))
+          (when (and date (not (string-empty-p date)))
+            (push (cons "GIT_AUTHOR_DATE" date) env)
+            (push (cons "GIT_COMMITTER_DATE" date) env))))
+      env))
+  (advice-add #'magit-git-environment :around #'my/magit-git-environment-personal-metadata))
