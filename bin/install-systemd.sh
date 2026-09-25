@@ -15,5 +15,7 @@ ln -sfn "$emacs_d/systemd/user/emacs.service.d/precheck.conf" \
 
 systemctl --user daemon-reload
 echo "Linked emacs.service from $emacs_d"
-echo "  systemctl --user enable --now emacs.service   # enable at login"
+echo "  Do not enable at login (keeps session start light)."
+echo "  systemctl --user start emacs.service          # when you need Emacs"
+echo "  ~/.emacs.d/bin/emacsclient-gui                # start service + GUI"
 echo "  systemctl --user status emacs.service         # check status"

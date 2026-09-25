@@ -18,7 +18,8 @@
 git clone <url> ~/.emacs.d
 ~/.emacs.d/bin/install-systemd.sh
 ~/.emacs.d/bin/install-desktop.sh
-systemctl --user enable --now emacs.service
+# Не enable на логине — быстрее вход; демон стартует по запросу.
+~/.emacs.d/bin/emacsclient-gui
 ```
 
 Пакеты из GNU ELPA / MELPA подтягиваются при первом запуске (`my/ensure-package`).
@@ -48,17 +49,21 @@ systemctl --user restart emacs.service
 
 ## Использование
 
-Демон держит сессию (окна, буферы, desktop). Новое GUI-окно:
+Демон **не** стартует при входе в сессию (быстрее логин). Его поднимают
+ярлык/меню или `bin/emacsclient-gui`. Демон держит сессию (окна, буферы,
+desktop). Новое GUI-окно:
 
 ```bash
-emacsclient -c          # пустое окно, восстановит desktop
+~/.emacs.d/bin/emacsclient-gui          # start service + окно
+emacsclient -c          # если service уже active
 emacsclient -c FILE     # файл в клиентском окне
 ```
 
-Управление сервисом — **только** через systemd (не запускайте `emacs --daemon`
-вручную параллельно):
+Не используйте `emacsclient -a ""` — пустой `-a` может запустить второй
+демон в обход systemd. Управление сервисом — **только** через systemd:
 
 ```bash
+systemctl --user start emacs.service    # вручную, без окна
 systemctl --user status emacs.service
 systemctl --user restart emacs.service
 ```
