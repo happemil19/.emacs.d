@@ -1117,6 +1117,7 @@ region."
   (setq-local eldoc-documentation-function #'pico8--eldoc-documentation)
   (setq-local syntax-propertize-function #'pico8--syntax-propertize)
   (setq-local indent-tabs-mode nil)
+  (setq-local tab-width pico8-indent-level)
   (setq-local lua-indent-level pico8-indent-level)
   (add-hook 'font-lock-after-fontify-hook
             #'pico8--apply-non-lua-read-only-properties nil t)
