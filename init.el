@@ -76,7 +76,15 @@
  '(mode-line-inactive ((t (:background "#282828" :foreground "#665c54" :box (:line-width 1 :color "#3c3836"))))))
 
 (setq display-line-numbers-type 'relative)
-(global-display-line-numbers-mode 1)
+
+(defun my/display-line-numbers-for-file ()
+  "Relative line numbers only in buffers visiting a file.
+Special buffers (vterm, buffer list, Help, Magit, …) stay unnumbered."
+  (if buffer-file-name
+      (display-line-numbers-mode 1)
+    (display-line-numbers-mode -1)))
+
+(add-hook 'after-change-major-mode-hook #'my/display-line-numbers-for-file)
 (window-divider-mode -1)
 
 (defun my/apply-cursor-frame (&optional frame)
@@ -856,11 +864,7 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
  ;; If you edit it by hand, you could mess it up, so be careful.
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
- '(package-selected-packages
-   '(ace-window company diff-hl docker docker-compose-mode
-                dockerfile-mode exec-path-from-shell flycheck goto-chg
-                gruvbox-theme magit markdown-mode nerd-icons nerd-icons-dired
-                nerd-icons-ibuffer speechd-el vterm yasnippet zenburn-theme)))
+ '(package-selected-packages nil))
 
 ;; Личные настройки (не в git): скопируйте local.el.example -> local.el
 (load (expand-file-name "local.el" user-emacs-directory) t t)
