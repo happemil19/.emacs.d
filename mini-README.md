@@ -8,15 +8,18 @@
 git clone <url> ~/.emacs.d
 ~/.emacs.d/bin/install-systemd.sh
 ~/.emacs.d/bin/install-desktop.sh
-systemctl --user enable --now emacs.service
-emacsclient -c
+# Не enable — демон не нужен на логине (быстрее вход).
+~/.emacs.d/bin/emacsclient-gui
 ```
 
 ## Каждый день
 
 ```bash
-emacsclient -c                    # новое окно (desktop восстановится)
-emacsclient -c FILE               # открыть файл
+~/.emacs.d/bin/emacsclient-gui          # поднимет service при необходимости
+# или:
+systemctl --user start emacs.service    # один раз за сессию
+emacsclient -c                          # новое окно (desktop восстановится)
+emacsclient -c FILE                     # открыть файл
 ```
 
 ## Перезапуск

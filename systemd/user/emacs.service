@@ -1,10 +1,14 @@
 [Unit]
 Description=Emacs text editor
 Documentation=info:emacs man:emacs(1) https://gnu.org/software/emacs/
+# Start after the graphical session so DISPLAY/XAUTHORITY are available.
+After=graphical-session-pre.target
+Wants=graphical-session-pre.target
 
 [Service]
 Type=notify
-ExecStart=/usr/local/bin/emacs --fg-daemon
+ExecStart=/usr/bin/emacs --fg-daemon
+PassEnvironment=DISPLAY WAYLAND_DISPLAY XAUTHORITY
 
 # Emacs will exit with status 15 after having received SIGTERM, which
 # is the default "KillSignal" value systemd uses to stop services.

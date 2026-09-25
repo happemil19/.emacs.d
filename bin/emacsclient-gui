@@ -1,0 +1,22 @@
+#!/bin/sh
+# Start emacs.service on demand (not at login), then open a GUI client.
+# Prefer this over `emacsclient -a ""` — empty -a can spawn a second daemon.
+set -e
+
+if ! systemctl --user is-active --quiet emacs.service; then
+  systemctl --user start emacs.service
+fi
+
+server="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/emacs/server"
+i=0
+while [ ! -S "$server" ] && [ "$i" -lt 60 ]; do
+  sleep 0.25
+  i=$((i + 1))
+done
+
+if [ ! -S "$server" ]; then
+  echo "emacsclient-gui: emacs.service did not create $server" >&2
+  exit 1
+fi
+
+exec /usr/bin/emacsclient -c "$@"

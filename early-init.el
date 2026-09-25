@@ -14,3 +14,7 @@
 ;; Tiling WM (cortile): Emacs must not ask X11 to resize/move the outer frame.
 (setq frame-inhibit-implied-resize 'force
       frame-resize-pixelwise t)
+
+;; Daemon is started on demand (not at login). Cap async native-comp so the
+;; first open after boot does not peg every core.
+(setq native-comp-async-jobs-number 1)
