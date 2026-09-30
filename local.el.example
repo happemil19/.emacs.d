@@ -1,4 +1,4 @@
-;;; local.el.example — личные настройки (не коммитить local.el)
+;;; local.el.example — личные настройки (не коммитить local.el)  -*- lexical-binding: t; -*-
 ;;
 ;;; Скопируйте в local.el и настройте под себя:
 ;;;   cp ~/.emacs.d/local.el.example ~/.emacs.d/local.el
