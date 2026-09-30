@@ -546,6 +546,8 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
 (setq desktop-prompt-restore nil)
 (setq desktop-save t)
 (setq desktop-autosave-interval 300)
+;; Prefer the live emacsclient display over a stale saved one.
+(setq desktop-restore-in-current-display t)
 ;; Daemon + emacsclient: reuse scratch frame breaks frameset restore (nil markers).
 (setq desktop-restore-reuses-frames (if (daemonp) nil t))
 (setq desktop-buffers-not-to-save
@@ -553,6 +555,36 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
               (regexp-opt '("*scratch*" "*Messages*" "*Warnings*"
                              "*Completions*" "*Help*" "*Backtrace*")
                           t)))
+
+;; Under daemon, frameset.el always honors the saved `display' parameter and
+;; ignores `desktop-restore-in-current-display'.  On Wayland sessions an X11
+;; Emacs can persist (display . "wayland-0"), which then fails restore with
+;; "Don't know how to interpret display \"wayland-0\"".
+(defun my/wayland-socket-display-p (name)
+  "Non-nil when NAME looks like a Wayland socket (not an X display)."
+  (and (stringp name) (string-match-p "\\`wayland-[0-9]+\\'" name)))
+
+(defun my/frameset-keep-original-display-p (orig force-display)
+  "Honor FORCE-DISPLAY even when running as a daemon."
+  (if (and (daemonp) force-display)
+      nil
+    (funcall orig force-display)))
+
+(defun my/frameset-filter-display (current _filtered _parameters saving)
+  "Rewrite Wayland socket names to a usable X display on X11 builds."
+  (let ((val (cdr current)))
+    (if (and (my/wayland-socket-display-p val) (not (featurep 'pgtk)))
+        (let ((x (or (frame-parameter nil 'display)
+                     (getenv "DISPLAY"))))
+          (when (and x (not (my/wayland-socket-display-p x)))
+            (cons 'display x)))
+      t)))
+
+(with-eval-after-load 'frameset
+  (advice-add #'frameset-keep-original-display-p :around
+              #'my/frameset-keep-original-display-p)
+  (setf (alist-get 'display frameset-filter-alist)
+        #'my/frameset-filter-display))
 
 (defvar my/desktop--enabled nil)
 (defvar my/desktop--after-restored nil)
