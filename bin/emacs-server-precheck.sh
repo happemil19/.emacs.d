@@ -6,7 +6,7 @@ server="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/emacs/server"
 
 [ -S "$server" ] || { pkill -u "$USER" -x emacs 2>/dev/null || true; exit 0; }
 
-if timeout 3 emacsclient -e '(kill-emacs)' >/dev/null 2>&1; then
+if timeout 3 /usr/local/bin/emacsclient -e '(kill-emacs)' >/dev/null 2>&1; then
   i=0
   while [ -S "$server" ] && [ "$i" -lt 10 ]; do
     sleep 1

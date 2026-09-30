@@ -7,7 +7,7 @@ Wants=graphical-session-pre.target
 
 [Service]
 Type=notify
-ExecStart=/usr/bin/emacs --fg-daemon
+ExecStart=/usr/local/bin/emacs --fg-daemon
 PassEnvironment=DISPLAY WAYLAND_DISPLAY XAUTHORITY
 
 # Emacs will exit with status 15 after having received SIGTERM, which
