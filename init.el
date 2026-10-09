@@ -47,7 +47,30 @@
 
 ;; Theme + highlight current line and the active window in splits.
 (my/ensure-package 'gruvbox-theme)
-(load-theme 'gruvbox-dark-medium t)
+
+(defun my/fix-gruvbox-gnus-face-cycle ()
+  "Break gnus news-low face cycle (gruvbox vs Emacs 31 defaults).
+
+Emacs 31: `gnus-group-news-low' inherits `gnus-group-news-low-empty'.
+Gruvbox:  `gnus-group-news-low-empty' inherits `gnus-group-news-low'.
+Re-applying the theme (C-c C-c) then errors with an inheritance cycle and
+aborts the rest of init.el — including .env mode setup."
+  (when (and (facep 'gnus-group-news-low)
+             (facep 'gnus-group-news-low-empty))
+    ;; Same pattern as gnus-group-mail-low / mail-low-empty in gruvbox.
+    (set-face-attribute 'gnus-group-news-low-empty nil
+                        :inherit 'gnus-group-mail-1-empty)
+    (set-face-attribute 'gnus-group-news-low nil
+                        :inherit 'gnus-group-mail-1)))
+
+(defun my/load-theme (theme)
+  "Load THEME if not already enabled (safe for init.el re-eval)."
+  (my/fix-gruvbox-gnus-face-cycle)
+  (unless (memq theme custom-enabled-themes)
+    (load-theme theme t))
+  (my/fix-gruvbox-gnus-face-cycle))
+
+(my/load-theme 'gruvbox-dark-medium)
 
 (global-hl-line-mode 1)
 (setq hl-line-sticky-flag t)
