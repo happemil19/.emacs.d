@@ -277,6 +277,28 @@ Bash/readline sends DECSCUSR (bar) and libvterm overrides `cursor-type';
 
 (global-set-key (kbd "C-c t") #'my/vterm)
 
+;; .env / .env.* / .env.dev.example — like Vim `ft=conf` (# comments, KEY=val).
+;; Use conf-unix-mode, not conf-mode: set-auto-mode binds delay-mode-hooks, so
+;; conf-mode's advice skips conf--guess-mode and leaves bare Conf[?] (; comments).
+(defconst my/env-file-name-re "\\.env\\(?:\\..*\\)?\\'"
+  "Regexp for dotenv-style file names (matched against `buffer-file-name').")
+
+(add-to-list 'auto-mode-alist `(,my/env-file-name-re . conf-unix-mode))
+
+(defun my/env-apply-conf-mode (&rest _)
+  "Apply `conf-unix-mode' to .env* buffers (desktop may restore fundamental-mode)."
+  (dolist (buf (buffer-list))
+    (with-current-buffer buf
+      (when (and buffer-file-name
+                 (string-match-p my/env-file-name-re buffer-file-name)
+                 (not (derived-mode-p 'conf-mode)))
+        (conf-unix-mode)))))
+
+;; Desktop restores the major mode that was saved; old sessions have fundamental.
+(add-hook 'desktop-after-read-hook #'my/env-apply-conf-mode)
+;; Fix already-open buffers when init.el is re-evaluated (C-c C-c).
+(my/env-apply-conf-mode)
+
 ;; Docker: Dockerfiles, compose YAML, container UI (M-x docker), TRAMP (/docker:…).
 (my/ensure-package 'dockerfile-mode)
 (require 'dockerfile-mode)
