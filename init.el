@@ -172,6 +172,78 @@ Special buffers (vterm, buffer list, Help, Magit, …) stay unnumbered."
 
 (my/apply-mode-line-settings)
 
+;; Plasma keyboard layout (en/ru) in the mode line — same source as tmux-kbd-layout.
+(require 'dbus)
+
+(defvar my/kbd-layout--cache "en"
+  "Short Plasma keyboard layout name for the mode line.")
+
+(defvar my/kbd-layout--signal nil
+  "D-Bus signal object for `layoutChanged', if registered.")
+
+(defvar my/kbd-layout--timer nil
+  "Idle fallback timer when D-Bus signal is unavailable.")
+
+(defvar my/kbd-layout--enabled nil
+  "Non-nil after mode-line layout indicator has been installed once.")
+
+(defun my/kbd-layout-short (code)
+  "Map XKB layout CODE to a short mode-line label (us→en)."
+  (pcase code
+    ((or "us" "en") "en")
+    (_ (or code "?"))))
+
+(defun my/kbd-layout-refresh (&optional index)
+  "Refresh `my/kbd-layout--cache' from Plasma (optional INDEX from signal)."
+  (condition-case nil
+      (let* ((idx (or (and (natnump index) index)
+                      (dbus-call-method
+                       :session "org.kde.keyboard" "/Layouts"
+                       "org.kde.KeyboardLayouts" "getLayout")))
+             (layouts (dbus-call-method
+                       :session "org.kde.keyboard" "/Layouts"
+                       "org.kde.KeyboardLayouts" "getLayoutsList"))
+             (entry (nth idx layouts))
+             (code (car-safe entry)))
+        (setq my/kbd-layout--cache (my/kbd-layout-short code)))
+    (error
+     ;; Fallback: same script as tmux status (Wayland/X11).
+     (let ((script (executable-find "tmux-kbd-layout")))
+       (when (and script (file-executable-p script))
+         (let ((out (string-trim (shell-command-to-string script))))
+           (when (and out (not (string-empty-p out)))
+             (setq my/kbd-layout--cache out)))))))
+  (force-mode-line-update t)
+  my/kbd-layout--cache)
+
+(defun my/kbd-layout-mode-line ()
+  "Mode-line fragment: current Plasma layout (en/ru)."
+  (propertize (format " %s" my/kbd-layout--cache)
+              'face 'bold
+              'help-echo "Plasma keyboard layout"))
+
+(defun my/kbd-layout-enable ()
+  "Show Plasma layout on the mode line; update on D-Bus (timer fallback)."
+  (my/kbd-layout-refresh)
+  (unless (member '(:eval (my/kbd-layout-mode-line)) global-mode-string)
+    (add-to-list 'global-mode-string '(:eval (my/kbd-layout-mode-line)) t))
+  (unless my/kbd-layout--signal
+    (setq my/kbd-layout--signal
+          (ignore-errors
+            (dbus-register-signal
+             :session "org.kde.keyboard" "/Layouts"
+             "org.kde.KeyboardLayouts" "layoutChanged"
+             #'my/kbd-layout-refresh))))
+  (unless my/kbd-layout--enabled
+    (setq my/kbd-layout--enabled t)
+    ;; Plasma may start after the daemon; one delayed poll.
+    (run-with-timer 2 nil #'my/kbd-layout-refresh))
+  (unless (or my/kbd-layout--signal my/kbd-layout--timer)
+    (setq my/kbd-layout--timer
+          (run-with-timer 1.5 1.5 #'my/kbd-layout-refresh))))
+
+(my/kbd-layout-enable)
+
 (add-hook 'dired-mode-hook #'nerd-icons-dired-mode)
 (add-hook 'ibuffer-mode-hook #'nerd-icons-ibuffer-mode)
 
