@@ -95,8 +95,10 @@ aborts the rest of init.el — including .env mode setup."
  '(cursor ((t (:background "#fbf1c7"))))
  '(hl-line ((t (:background "#504945" :extend t))))
  '(line-number-current ((t (:foreground "#fbf1c7" :background "#504945" :weight bold))))
+ ;; Same :line-width for active/inactive: unequal boxes change mode-line
+ ;; height on focus in/out and can nudge the outer X11/Xwayland frame down.
  '(mode-line ((t (:background "#504945" :foreground "#fbf1c7" :box (:line-width 3 :color "#fe8019")))))
- '(mode-line-inactive ((t (:background "#282828" :foreground "#665c54" :box (:line-width 1 :color "#3c3836"))))))
+ '(mode-line-inactive ((t (:background "#282828" :foreground "#665c54" :box (:line-width 3 :color "#3c3836"))))))
 
 (setq display-line-numbers-type 'relative)
 
