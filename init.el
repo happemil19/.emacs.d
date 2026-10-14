@@ -730,17 +730,43 @@ bare `$' and Magit/Transient fail with \"void-variable $\"."
       (apply orig dir release only-if-changed version)
     (message "Desktop save skipped (no file/dired/magit/vterm in windows)")))
 
+(defun my/desktop-frame-pos-on-screen-p (left top)
+  "Non-nil when LEFT,TOP lie inside some monitor workarea."
+  (and (numberp left) (numberp top)
+       (seq-some
+        (lambda (m)
+          (pcase-let ((`(,x ,y ,w ,h) (alist-get 'workarea m)))
+            (and (<= x left (+ x w -1))
+                 (<= y top (+ y h -1)))))
+        (display-monitor-attributes-list))))
+
 (defun my/desktop-clamp-frame-positions ()
-  "Keep saved frame coords on-screen (avoids `left + -10' in .emacs.desktop)."
+  "Keep saved frame coords on-screen across all monitors.
+
+Skip invisible / unpositioned frames (daemon leftover \"F1\" has nil
+left/top; `frame-position' reports (0 . 0) and must not be \"fixed\").
+Do not call `set-frame-position' unless the position is actually
+off-screen: on Xwayland even a reposition to the same coords drifts
+the outer frame when desktop autosave runs during idle/echo-area
+activity."
   (unless (my/tiling-wm-p)
     (dolist (frame (my/desktop-gui-frames))
-      (let* ((pos (frame-position frame))
-             (left (car pos))
-             (top (cdr pos)))
-        (when (or (not (numberp left)) (< left 0) (>= left 1600)
-                  (not (numberp top)) (< top 0))
-          (set-frame-position frame (max 0 (if (numberp left) left 100))
-                              (max 0 (if (numberp top) top 100))))))))
+      (let ((left (frame-parameter frame 'left))
+            (top (frame-parameter frame 'top)))
+        (when (and (frame-visible-p frame)
+                   (numberp left) (numberp top)
+                   (not (my/desktop-frame-pos-on-screen-p left top)))
+          (pcase-let* ((wa (alist-get
+                            'workarea
+                            (or (frame-monitor-attributes frame)
+                                (car (display-monitor-attributes-list)))))
+                       (`(,x ,y ,_w ,_h) wa)
+                       (nl left)
+                       (nt top))
+            (unless (my/desktop-frame-pos-on-screen-p nl nt)
+              (setq nl (+ x 100) nt (+ y 100)))
+            (unless (and (eql nl left) (eql nt top))
+              (set-frame-position frame nl nt))))))))
 
 (with-eval-after-load 'desktop
   (advice-add #'desktop-save :around #'my/desktop-save-guard)
