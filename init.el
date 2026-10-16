@@ -284,14 +284,59 @@ their `default-directory' happens to sit inside a repository."
                       'shell-mode 'vc-dir-mode 'diff-mode 'log-view-mode
                       'compilation-mode)))
 
+(defun my/buffer-context-root (&optional buffer)
+  "Project root of BUFFER, or nil when BUFFER is outside any project.
+Uses the same notion of project context as the Buffer Menu groups."
+  (with-current-buffer (or buffer (current-buffer))
+    (let ((non-essential t))
+      (when (my/buffer-menu--project-buffer-p)
+        (when-let* ((project (ignore-errors (project-current))))
+          (expand-file-name (project-root project)))))))
+
+(defun my/buffer-same-context-p (buffer root)
+  "Non-nil when BUFFER belongs to ROOT.
+ROOT nil means the group of buffers outside any project."
+  (let ((other (my/buffer-context-root buffer)))
+    (if root
+        (and other (file-equal-p root other))
+      (not other))))
+
 (defun my/buffer-menu-group-by-project (entry)
   "Project root label for buffer-menu ENTRY, or `my/buffer-menu-no-project'."
-  (with-current-buffer (car entry)
-    (let ((non-essential t))
-      (if-let* ((project (and (my/buffer-menu--project-buffer-p)
-                              (ignore-errors (project-current)))))
-          (abbreviate-file-name (directory-file-name (project-root project)))
-        my/buffer-menu-no-project))))
+  (if-let* ((root (my/buffer-context-root (car entry))))
+      (abbreviate-file-name (directory-file-name root))
+    my/buffer-menu-no-project))
+
+(defun my/switch-buffer-in-context (next)
+  "Switch to the next or previous buffer in the current context.
+NEXT non-nil moves forward (`switch-to-next-buffer'), otherwise back.
+Buffers from another project, and project buffers when the current
+buffer has none, are skipped.  The existing `switch-to-prev-buffer-skip'
+rules still apply."
+  (let* ((root (my/buffer-context-root))
+         (orig switch-to-prev-buffer-skip)
+         (switch-to-prev-buffer-skip
+          (lambda (window buffer &optional bury-or-kill)
+            (or (not (my/buffer-same-context-p buffer root))
+                (switch-to-prev-buffer-skip-p
+                 orig window buffer bury-or-kill)))))
+    (if next
+        (switch-to-next-buffer)
+      (switch-to-prev-buffer))))
+
+(defun my/next-buffer-in-context (&optional arg)
+  "Switch to the ARGth next buffer in the current project context."
+  (interactive "p")
+  (dotimes (_ (or arg 1))
+    (unless (my/switch-buffer-in-context t)
+      (user-error "No next buffer in this context"))))
+
+(defun my/previous-buffer-in-context (&optional arg)
+  "Switch to the ARGth previous buffer in the current project context."
+  (interactive "p")
+  (dotimes (_ (or arg 1))
+    (unless (my/switch-buffer-in-context nil)
+      (user-error "No previous buffer in this context"))))
 
 (defun my/buffer-menu--came-from-project ()
   "Abbreviated root of the buffer that was current when the menu opened."
@@ -1012,7 +1057,9 @@ activity."
   (org-agenda nil "t"))
 
 ;; Windows and buffers — home row under C-c (no arrow keys).
-;; h/j/k/l: move between splits (like vim C-w).  n/p: prev/next buffer.  [/]: undo window layout.
+;; h/j/k/l: move between splits (like vim C-w).
+;; n/p: next/previous buffer in the current project (or the non-project group).
+;; [/]: undo window layout.
 (require 'windmove)
 (setq windmove-wrap-around t)
 (winner-mode 1)
@@ -1021,8 +1068,8 @@ activity."
 (global-set-key (kbd "C-c j") #'windmove-down)
 (global-set-key (kbd "C-c k") #'windmove-up)
 (global-set-key (kbd "C-c l") #'windmove-right)
-(global-set-key (kbd "C-c n") #'next-buffer)
-(global-set-key (kbd "C-c p") #'previous-buffer)
+(global-set-key (kbd "C-c n") #'my/next-buffer-in-context)
+(global-set-key (kbd "C-c p") #'my/previous-buffer-in-context)
 (global-set-key (kbd "C-c [") #'winner-undo)
 (global-set-key (kbd "C-c ]") #'winner-redo)
 
