@@ -119,10 +119,17 @@ Special buffers (vterm, buffer list, Help, Magit, …) stay unnumbered."
       (set-cursor-color my/cursor-color))))
 
 (defun my/apply-mode-line-settings ()
-  "Mode-line icons; also undo legacy prepends from older init versions."
+  "Mode-line icons; also undo legacy prepends from older init versions.
+
+`mode-line-buffer-identification' is buffer-local once set, so a plain
+`setq' (for example while re-evaluating init.el) updates only that
+buffer and every other mode-line keeps the stock name."
   (my/mode-line--strip-legacy-nerd-icons)
-  (setq mode-line-buffer-identification
-        '((:eval (my/mode-line-buffer-identification)))))
+  (setq-default mode-line-buffer-identification
+                '((:eval (my/mode-line-buffer-identification))))
+  (dolist (buf (buffer-list))
+    (with-current-buffer buf
+      (kill-local-variable 'mode-line-buffer-identification))))
 
 (defun my/reapply-init-gui-frame (&optional frame)
   "Per-frame GUI settings that desktop frameset restore can override."
@@ -249,19 +256,73 @@ Special buffers (vterm, buffer list, Help, Magit, …) stay unnumbered."
 (add-hook 'dired-mode-hook #'nerd-icons-dired-mode)
 (add-hook 'ibuffer-mode-hook #'nerd-icons-ibuffer-mode)
 
-(defun my/nerd-icons-buffer-menu--inject-icons (&rest _)
-  (when (derived-mode-p 'Buffer-menu-mode)
-    (mapc (lambda (entry)
-            (let ((buf (car entry))
-                  (vec (cadr entry)))
-              (when (buffer-live-p buf)
-                (with-current-buffer buf
-                  (let ((icon (my/nerd-icons-file-icon)))
-                    (when icon
-                      (aset vec 3 (concat icon " " (aref vec 3)))))))))
-          tabulated-list-entries)))
+(defconst my/buffer-menu-no-project "No project"
+  "Buffer Menu group for buffers outside any `project.el' project.")
 
-(advice-add 'list-buffers--refresh :after #'my/nerd-icons-buffer-menu--inject-icons)
+(defun my/buffer-menu--pretty-name (orig name)
+  "Prepend a file-type icon before column width is calculated.
+Doing this inside `Buffer-menu--pretty-name' (rather than after
+`list-buffers--refresh') keeps the Buffer column wide enough for the
+glyph plus the name."
+  (let ((pretty (funcall orig name)))
+    (if-let* ((icon (my/nerd-icons-file-icon)))
+        (concat icon " " pretty)
+      pretty)))
+
+(advice-add 'Buffer-menu--pretty-name :around #'my/buffer-menu--pretty-name)
+;; Drop the post-refresh injector: it prepended icons after the column
+;; width was fixed, so glyphs were clipped, and it double-applies now.
+(advice-remove 'list-buffers--refresh #'my/nerd-icons-buffer-menu--inject-icons)
+
+(defun my/buffer-menu--project-buffer-p ()
+  "Non-nil when the current buffer belongs to a project context.
+File buffers, Dired, Magit, VC and terminals do.  Incidental special
+buffers (`*Messages*', `*Help*', `*Completions*', …) do not, even when
+their `default-directory' happens to sit inside a repository."
+  (or buffer-file-name
+      (derived-mode-p 'dired-mode 'magit-mode 'vterm-mode 'eshell-mode
+                      'shell-mode 'vc-dir-mode 'diff-mode 'log-view-mode
+                      'compilation-mode)))
+
+(defun my/buffer-menu-group-by-project (entry)
+  "Project root label for buffer-menu ENTRY, or `my/buffer-menu-no-project'."
+  (with-current-buffer (car entry)
+    (let ((non-essential t))
+      (if-let* ((project (and (my/buffer-menu--project-buffer-p)
+                              (ignore-errors (project-current)))))
+          (abbreviate-file-name (directory-file-name (project-root project)))
+        my/buffer-menu-no-project))))
+
+(defun my/buffer-menu--came-from-project ()
+  "Abbreviated root of the buffer that was current when the menu opened."
+  (when-let* ((entry (seq-find (lambda (e)
+                                 (equal (aref (cadr e) 0) "."))
+                               tabulated-list-entries)))
+    (let ((label (my/buffer-menu-group-by-project entry)))
+      (unless (equal label my/buffer-menu-no-project)
+        label))))
+
+(defun my/buffer-menu-group-sort (groups _level)
+  "Current project first, other projects by name, non-project buffers last."
+  (let* ((current (my/buffer-menu--came-from-project))
+         (rank (lambda (name)
+                 (cond ((and current (equal name current)) 0)
+                       ((equal name my/buffer-menu-no-project) 2)
+                       (t 1)))))
+    (sort groups
+          :in-place t
+          :lessp (lambda (a b)
+                   (let ((ra (funcall rank (car a)))
+                         (rb (funcall rank (car b))))
+                     (if (= ra rb)
+                         (string< (car a) (car b))
+                       (< ra rb)))))))
+
+;; A list of functions, not a bare function: `list-buffers--refresh' wraps
+;; each one as a single outline level.  A function used directly is treated
+;; as a path list and splits the label into characters.
+(setq Buffer-menu-group-by '(my/buffer-menu-group-by-project))
+(setq Buffer-menu-group-sort-by #'my/buffer-menu-group-sort)
 
 ;; Size for new GUI frames.  Must be set before a display exists (emacs
 ;; --fg-daemon loads init with (display-graphic-p) nil).
