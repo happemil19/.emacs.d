@@ -45,6 +45,7 @@ emacsclient -e '(load user-init-file t t)'
 | `C-c h/j/k/l` | окно ← ↓ ↑ → |
 | `C-c n/p` | буфер вперёд / назад |
 | `C-c g` / `C-x g` | Magit (проект / репо) |
+| `C-c s` | live-поиск по проекту (`rg` + превью) |
 | `C-c r` | недавние файлы |
 | `C-c e` | `init.el` |
 

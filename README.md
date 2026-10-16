@@ -87,13 +87,14 @@ systemctl --user start emacs.service
 | `C-c [ / ]` | undo / redo раскладки окон (winner) |
 | `C-c g` | Magit для выбранного проекта |
 | `C-x g` | Magit для текущего репозитория |
+| `C-c s` | live-поиск по содержимому проекта (`rg`, превью строки) |
 | `C-c r` | недавние файлы |
 | `C-c t` | vterm |
 | `C-c o` / `C-c i` / `C-c a t` | Org notes / inbox / все задачи |
 | `C-c ;` | comment-line |
 | `C-c e` | открыть `init.el` |
 
-`C-x p p` — выбор проекта; в списке `g` открывает Magit.
+`C-x p p` — выбор проекта; в списке `g` открывает Magit, `s` — live-поиск.
 
 ## Структура
 
