@@ -155,14 +155,18 @@ buffer and every other mode-line keeps the stock name."
 
 (setq nerd-icons-font-family "FiraCode Nerd Font")
 
-(defun my/nerd-icons-file-icon (&optional file)
-  "File-extension icon for FILE or the current buffer (GUI only)."
+(defun my/nerd-icons-buffer-icon (&optional file)
+  "Icon for FILE, or for the current buffer (GUI only).
+A visited file keeps its extension glyph.  A buffer with no file
+takes the glyph of its major mode, so Magit, VTerm and *Messages*
+are not the same generic file icon."
   (when (display-graphic-p)
-    (nerd-icons-icon-for-file
-     (or file
-         (and buffer-file-name (file-name-nondirectory buffer-file-name))
-         (buffer-name))
-     :height 0.9 :v-adjust 0.05)))
+    (let ((name (or file
+                    (and buffer-file-name
+                         (file-name-nondirectory buffer-file-name)))))
+      (if name
+          (nerd-icons-icon-for-file name :height 0.9 :v-adjust 0.05)
+        (nerd-icons-icon-for-mode major-mode :height 0.9 :v-adjust 0.05)))))
 
 (defun my/mode-line--strip-legacy-nerd-icons ()
   "Drop stacked nerd-icon prepends left by older init.el versions."
@@ -173,9 +177,9 @@ buffer and every other mode-line keeps the stock name."
     (setq-default mode-line-format fmt)))
 
 (defun my/mode-line-buffer-identification ()
-  "Buffer name with a single file-extension icon (GUI only)."
+  "Buffer name with one icon: extension for a file, major mode otherwise."
   (let ((name (buffer-name)))
-    (if-let ((icon (my/nerd-icons-file-icon)))
+    (if-let ((icon (my/nerd-icons-buffer-icon)))
         (concat icon " " (propertize name 'face 'mode-line-buffer-id))
       (propertize name 'face 'mode-line-buffer-id))))
 
@@ -260,12 +264,13 @@ buffer and every other mode-line keeps the stock name."
   "Buffer Menu group for buffers outside any `project.el' project.")
 
 (defun my/buffer-menu--pretty-name (orig name)
-  "Prepend a file-type icon before column width is calculated.
+  "Prepend a buffer icon before column width is calculated.
 Doing this inside `Buffer-menu--pretty-name' (rather than after
 `list-buffers--refresh') keeps the Buffer column wide enough for the
-glyph plus the name."
+glyph plus the name.  Files use the extension glyph; other buffers
+use the major-mode glyph."
   (let ((pretty (funcall orig name)))
-    (if-let* ((icon (my/nerd-icons-file-icon)))
+    (if-let* ((icon (my/nerd-icons-buffer-icon)))
         (concat icon " " pretty)
       pretty)))
 
