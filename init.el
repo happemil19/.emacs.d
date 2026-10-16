@@ -307,17 +307,26 @@ ROOT nil means the group of buffers outside any project."
       (abbreviate-file-name (directory-file-name root))
     my/buffer-menu-no-project))
 
+(defun my/buffer-cycle-skip-p (buffer)
+  "Non-nil when BUFFER stays in the project list but not in C-c n/p.
+The Magit process buffer is a log of git commands already run; it is
+not a place to land while stepping through the project."
+  (with-current-buffer buffer
+    (derived-mode-p 'magit-process-mode)))
+
 (defun my/switch-buffer-in-context (next)
   "Switch to the next or previous buffer in the current context.
 NEXT non-nil moves forward (`switch-to-next-buffer'), otherwise back.
 Buffers from another project, and project buffers when the current
-buffer has none, are skipped.  The existing `switch-to-prev-buffer-skip'
-rules still apply."
+buffer has none, are skipped.  `my/buffer-cycle-skip-p' also drops
+buffers that belong to the context but are not worth stepping through.
+The existing `switch-to-prev-buffer-skip' rules still apply."
   (let* ((root (my/buffer-context-root))
          (orig switch-to-prev-buffer-skip)
          (switch-to-prev-buffer-skip
           (lambda (window buffer &optional bury-or-kill)
             (or (not (my/buffer-same-context-p buffer root))
+                (my/buffer-cycle-skip-p buffer)
                 (switch-to-prev-buffer-skip-p
                  orig window buffer bury-or-kill)))))
     (if next
