@@ -1356,6 +1356,24 @@ activity."
 (setq org-hide-leading-stars t)
 (setq org-startup-indented t)
 
+;; Two workflows: classic TODO|DONE, and an extended project chain.
+;; Org picks the sequence by the keyword already on the headline.
+(setq org-todo-keywords
+      '((sequence "TODO(t)" "|" "DONE(d)" "CANCELED(c)")
+        (sequence "NEW(n)" "WORKING_ON(w)" "TESTING(e)" "WAITING_FOR_DEPLOY(a)" "NEED_INFO(i)" "|"
+                  "RESOLVED(r)" "CLOSED(o)" "CANCELED(x)")))
+(setq org-todo-keyword-faces
+      '(("TODO"               . (:foreground "red" :weight bold))
+        ("DONE"               . (:foreground "green" :weight bold))
+        ("NEW"                . (:foreground "red" :weight bold))
+        ("WORKING_ON"         . (:foreground "orange" :weight bold))
+        ("TESTING"            . (:foreground "goldenrod" :weight bold))
+        ("WAITING_FOR_DEPLOY" . (:foreground "cyan" :weight bold))
+        ("NEED_INFO"          . (:foreground "magenta" :weight bold))
+        ("RESOLVED"           . (:foreground "green" :weight bold))
+        ("CLOSED"             . (:foreground "green" :weight bold))
+        ("CANCELED"           . (:foreground "gray" :weight bold))))
+
 (org-babel-do-load-languages
  'org-babel-load-languages
  '((emacs-lisp . t)
