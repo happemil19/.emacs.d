@@ -979,6 +979,8 @@ the search and is then run normally."
 (setq xref-show-xrefs-function #'consult-xref
       xref-show-definitions-function #'consult-xref)
 (global-set-key (kbd "C-c s") #'consult-ripgrep)
+;; Defined with Eglot setup below; bound here with other C-c keys.
+(global-set-key (kbd "C-c y") #'my/eglot-toggle-python-server)
 
 ;; Git change markers in the fringe while editing (diff-hl).
 (my/ensure-package 'diff-hl)
@@ -1005,6 +1007,15 @@ the search and is then run normally."
 (setq python-indent-offset 4)
 (setq-default indent-tabs-mode nil)
 
+;; Go: this Emacs build has no tree-sitter, so use classic go-mode for .go.
+(my/ensure-package 'go-mode)
+
+;; Prefer ~/go/bin (go install …) over Debian /usr/bin tools like gopls.
+(let ((go-bin (expand-file-name "go/bin" (getenv "HOME"))))
+  (when (file-directory-p go-bin)
+    (setq exec-path (cons go-bin (delete go-bin exec-path)))
+    (setenv "PATH" (concat go-bin path-separator (getenv "PATH")))))
+
 (defun my/pylsp-executable ()
   "Return real pylsp binary, not a pyenv shim with local .python-version."
   (let* ((pyenv-root (or (getenv "PYENV_ROOT")
@@ -1018,6 +1029,19 @@ the search and is then run normally."
         (let ((default-directory (getenv "HOME")))
           (executable-find "pylsp")))))
 
+(defun my/pyright-executable ()
+  "Return pyright language-server binary, if installed."
+  (let ((default-directory (getenv "HOME")))
+    (or (executable-find "pyright-langserver")
+        (executable-find "basedpyright-langserver"))))
+
+(defun my/gopls-executable ()
+  "Prefer user-installed gopls (matches newer Go) over Debian's."
+  (or (let ((p (expand-file-name "go/bin/gopls" (getenv "HOME"))))
+        (and (file-executable-p p) p))
+      (let ((default-directory (getenv "HOME")))
+        (executable-find "gopls"))))
+
 (defun my/python-project-venv ()
   "Return project `.venv' or `venv' directory when present."
   (when-let ((root (locate-dominating-file
@@ -1029,43 +1053,202 @@ the search and is then run normally."
              (expand-file-name ".venv" root))
         (expand-file-name "venv" root))))
 
+;; Only one Python LSP at a time.  Toggle with C-c y.
+(defcustom my/python-lsp-server 'pylsp
+  "Active Python language server for Eglot: `pylsp' or `pyright'."
+  :type '(choice (const :tag "pylsp (Jedi)" pylsp)
+                 (const :tag "pyright" pyright))
+  :group 'eglot)
+
+(defun my/python-lsp-contact ()
+  "Eglot contact for `my/python-lsp-server', or nil if missing."
+  (pcase my/python-lsp-server
+    ('pylsp (my/pylsp-executable))
+    ('pyright (when-let ((bin (my/pyright-executable)))
+                (list bin "--stdio")))
+    (_ nil)))
+
 (eval-when-compile (require 'eglot))
 
-(defun my/eglot-configure-python-server ()
-  "Register pylsp for Python modes; bypass pyenv shims."
-  (when-let ((pylsp (my/pylsp-executable)))
-    (require 'eglot)
+(defun my/eglot-remove-python-programs ()
+  "Drop Python entries from `eglot-server-programs'."
+  (setq eglot-server-programs
+        (cl-remove-if
+         (lambda (entry)
+           (let ((m (car entry)))
+             (or (memq m '(python-mode python-ts-mode))
+                 (and (listp m)
+                      (or (memq 'python-mode m)
+                          (memq 'python-ts-mode m))))))
+         eglot-server-programs)))
+
+(defun my/eglot-configure-servers ()
+  "Register preferred language servers for Python and Go.
+
+For Python, only the server selected by `my/python-lsp-server' is
+registered, so pylsp and pyright never run together."
+  (require 'eglot)
+  (my/eglot-remove-python-programs)
+  (when-let ((contact (my/python-lsp-contact)))
     (setq eglot-server-programs
-          (cons `((python-mode python-ts-mode) ,pylsp)
+          (cons `((python-mode python-ts-mode) . ,(ensure-list contact))
+                eglot-server-programs)))
+  (when-let ((gopls (my/gopls-executable)))
+    (setq eglot-server-programs
+          (cons `((go-mode go-dot-mod-mode go-dot-work-mode
+                           go-ts-mode go-mod-ts-mode go-work-ts-mode)
+                  . (,gopls))
                 (cl-remove-if
                  (lambda (entry)
-                   (and (listp (car entry))
-                        (or (memq 'python-mode (car entry))
-                            (memq 'python-ts-mode (car entry)))))
+                   (let ((m (car entry)))
+                     (or (eq m 'go-mode)
+                         (and (listp m)
+                              (or (memq 'go-mode m)
+                                  (memq 'go-ts-mode m))))))
                  eglot-server-programs)))))
 
 (defun my/eglot-python-workspace-config ()
-  "Point pylsp/jedi at the project virtualenv when one exists."
+  "Point the active Python LSP at the project virtualenv when present."
   (when (derived-mode-p 'python-mode 'python-ts-mode)
     (when-let ((venv (my/python-project-venv)))
       (setq eglot-workspace-configuration
-            `(:pylsp (:plugins (:jedi (:environment ,venv))))))))
+            (pcase my/python-lsp-server
+              ('pylsp
+               `(:pylsp (:plugins (:jedi (:environment ,venv)))))
+              ('pyright
+               `(:python
+                 (:pythonPath ,(expand-file-name "bin/python" venv)
+                  :venvPath ,(file-name-directory (directory-file-name venv))
+                  :venv ,(file-name-nondirectory
+                          (directory-file-name venv)))))
+              (_ nil))))))
+
+(defun my/eglot-shutdown-python-servers ()
+  "Shut down every Eglot server that manages a Python buffer."
+  (require 'eglot)
+  (let (servers)
+    (dolist (buf (buffer-list))
+      (with-current-buffer buf
+        (when (and (derived-mode-p 'python-mode 'python-ts-mode)
+                   (fboundp 'eglot-current-server)
+                   (eglot-current-server))
+          (cl-pushnew (eglot-current-server) servers))))
+    (dolist (server servers)
+      (ignore-errors (eglot-shutdown server)))))
+
+(defvar my/eglot--connect-lock nil
+  "Non-nil while `my/eglot-try-connect' is starting a server.")
+
+(defun my/eglot-try-connect ()
+  "Connect Eglot for the current buffer if needed.
+
+Serializes attempts so several open files (or toggle + hooks) do not
+race `eglot--connect' and trip \"Selecting deleted buffer\"."
+  (require 'eglot)
+  (when (and buffer-file-name
+             (my/eglot-server-available-p)
+             (not (eglot-current-server))
+             (not my/eglot--connect-lock))
+    (setq my/eglot--connect-lock t)
+    (unwind-protect
+        (condition-case err
+            (apply #'eglot--connect (eglot--guess-contact))
+          (error (message "my/eglot-try-connect: %s"
+                          (error-message-string err))))
+      (setq my/eglot--connect-lock nil))))
+
+(defun my/eglot-restart-python-buffers ()
+  "Start one Eglot Python session; it manages all project Python buffers."
+  (catch 'connected
+    (dolist (buf (buffer-list))
+      (when (buffer-live-p buf)
+        (with-current-buffer buf
+          (when (and buffer-file-name
+                     (derived-mode-p 'python-mode 'python-ts-mode))
+            (my/eglot-configure-servers)
+            (my/eglot-try-connect)
+            (throw 'connected t)))))))
+
+(defun my/eglot-toggle-python-server ()
+  "Switch Python LSP between pylsp and pyright; only one stays running."
+  (interactive)
+  (let* ((next (if (eq my/python-lsp-server 'pylsp) 'pyright 'pylsp))
+         (prev my/python-lsp-server))
+    (setq my/python-lsp-server next)
+    (unless (my/python-lsp-contact)
+      (setq my/python-lsp-server prev)
+      (user-error
+       "Python LSP `%s' is not installed (need %s)"
+       next
+       (if (eq next 'pyright)
+           "`pyright-langserver' (npm i -g pyright) or basedpyright"
+         "`pylsp'")))
+    (my/eglot-shutdown-python-servers)
+    (my/eglot-configure-servers)
+    (my/eglot-restart-python-buffers)
+    (message "Python LSP → %s (was %s)" next prev)))
+
+(defun my/eglot-server-available-p ()
+  "Non-nil when a language server for the current major mode exists."
+  (cond
+   ((derived-mode-p 'python-mode 'python-ts-mode)
+    (my/python-lsp-contact))
+   ((derived-mode-p 'c-mode 'c++-mode 'c-ts-mode 'c++-ts-mode)
+    (let ((default-directory (getenv "HOME")))
+      (or (executable-find "clangd")
+          (executable-find "ccls"))))
+   ((derived-mode-p 'go-mode 'go-ts-mode)
+    (my/gopls-executable))))
 
 (defun my/eglot-ensure ()
-  "Start Eglot when a Python LSP server is available."
-  (cond ((my/pylsp-executable)
-         (my/eglot-configure-python-server)
-         (eglot-ensure))
-        ((let ((default-directory (getenv "HOME")))
-           (or (executable-find "pyright-langserver")
-               (executable-find "pyright")))
-         (require 'eglot)
-         (eglot-ensure))))
+  "Start Eglot when a language server for this buffer is available.
+
+`eglot-ensure' defers to `post-command-hook'; also schedule one serialized
+connect for desktop-restored buffers that never get a command."
+  (when (and buffer-file-name (my/eglot-server-available-p))
+    (my/eglot-configure-servers)
+    (eglot-ensure)
+    (let ((buf (current-buffer)))
+      (run-at-time
+       0.05 nil
+       (lambda ()
+         (when (buffer-live-p buf)
+           (with-current-buffer buf
+             (unless (eglot-current-server)
+               (my/eglot-try-connect)))))))))
 
 (add-hook 'eglot-managed-mode-hook #'my/eglot-python-workspace-config)
 
-(add-hook 'python-mode-hook #'my/eglot-ensure)
-(add-hook 'python-ts-mode-hook #'my/eglot-ensure)
+(dolist (hook '(python-mode-hook python-ts-mode-hook
+                 c-mode-hook c++-mode-hook
+                 c-ts-mode-hook c++-ts-mode-hook
+                 go-mode-hook go-ts-mode-hook))
+  (add-hook hook #'my/eglot-ensure))
+
+;; After init/reload: attach Eglot to already-open code buffers (desktop).
+(defun my/eglot-ensure-open-buffers ()
+  "Run `my/eglot-ensure' in open buffers that look like code we manage."
+  (dolist (buf (buffer-list))
+    (when (buffer-live-p buf)
+      (with-current-buffer buf
+        (when (and buffer-file-name
+                   (derived-mode-p 'python-mode 'python-ts-mode
+                                   'c-mode 'c++-mode 'c-ts-mode 'c++-ts-mode
+                                   'go-mode 'go-ts-mode)
+                   (not (bound-and-true-p eglot--managed-mode)))
+          (my/eglot-ensure))))))
+
+(add-hook 'after-init-hook #'my/eglot-ensure-open-buffers)
+(when after-init-time
+  (run-at-time 0.1 nil #'my/eglot-ensure-open-buffers))
+
+;; M-g n/p are `next-error'/`previous-error' (compilation, grep).  While
+;; Flymake is on (Eglot), jump LSP diagnostics instead.
+(with-eval-after-load 'flymake
+  (define-key flymake-mode-map (kbd "M-g n") #'flymake-goto-next-error)
+  (define-key flymake-mode-map (kbd "M-g p") #'flymake-goto-prev-error)
+  (define-key flymake-mode-map (kbd "M-g M-n") #'flymake-goto-next-error)
+  (define-key flymake-mode-map (kbd "M-g M-p") #'flymake-goto-prev-error))
 
 ;; Persistence: auto-save, backups, session restore, cursor & history.
 (setq auto-save-default t)
@@ -1489,7 +1672,11 @@ activity."
  ;; If you edit it by hand, you could mess it up, so be careful.
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
- '(package-selected-packages nil))
+ '(package-selected-packages
+   '(consult diff-hl docker docker-compose-mode dockerfile-mode eglot
+             exec-path-from-shell go-mode gruvbox-theme lua-mode magit
+             markdown-mode nerd-icons-dired nerd-icons-ibuffer
+             speechd-el vertico vterm)))
 
 ;; Личные настройки (не в git): скопируйте local.el.example -> local.el
 (load (expand-file-name "local.el" user-emacs-directory) t t)
