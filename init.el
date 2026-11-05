@@ -1606,6 +1606,12 @@ activity."
 (global-set-key (kbd "C-c ;") #'comment-line)
 ;; Built-in M-; (`comment-dwim'): region if highlighted, else toggles current line.
 
+;; Buffer display toggles (local): whitespace / line wrap.
+;; Tabs, trailing spaces, and visible space/tab marks — not the full noisy set.
+(setq whitespace-style '(face tabs trailing space-mark tab-mark))
+(global-set-key (kbd "C-c w") #'whitespace-mode)
+(global-set-key (kbd "C-c W") #'toggle-truncate-lines)
+
 ;; Convenience: open this config quickly.
 (defun my/init-el-p ()
   "Non-nil when the current buffer is user-init-file."
