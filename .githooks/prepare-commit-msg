@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+# shellcheck source=run-personal.sh
+source "$(dirname "$0")/run-personal.sh"
+run_personal_hooks prepare-commit-msg "$@"
+
+exit 0
