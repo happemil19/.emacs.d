@@ -119,12 +119,16 @@ Special buffers (vterm, buffer list, Help, Magit, …) stay unnumbered."
       (set-cursor-color my/cursor-color))))
 
 (defun my/apply-mode-line-settings ()
-  "Mode-line icons; also undo legacy prepends from older init versions.
+  "Mode-line icons/position; also undo legacy prepends from older init versions.
 
 `mode-line-buffer-identification' is buffer-local once set, so a plain
 `setq' (for example while re-evaluating init.el) updates only that
 buffer and every other mode-line keeps the stock name."
   (my/mode-line--strip-legacy-nerd-icons)
+  (line-number-mode 1)
+  (column-number-mode 1)
+  (setq mode-line-position-column-line-format '(" L%l,C%c"))
+  (my/mode-line--ensure-region-segment)
   (setq-default mode-line-buffer-identification
                 '((:eval (my/mode-line-buffer-identification))))
   (dolist (buf (buffer-list))
@@ -175,6 +179,31 @@ are not the same generic file icon."
     (while (and fmt (equal (car fmt) legacy))
       (setq fmt (cdr fmt)))
     (setq-default mode-line-format fmt)))
+
+(defun my/mode-line-region ()
+  "Mode-line fragment: active region as V3L.128ch (lines.characters)."
+  (when (use-region-p)
+    (let* ((beg (region-beginning))
+           (end (region-end))
+           (lines (count-lines beg end))
+           (chars (- end beg)))
+      (propertize (format " V%dL.%dch" lines chars)
+                  'help-echo "Active region size (lines.characters)"))))
+
+(defun my/mode-line--ensure-region-segment ()
+  "Keep region size immediately after `mode-line-position'."
+  (let ((segment '(:eval (my/mode-line-region)))
+        (fmt (default-value 'mode-line-format))
+        result found)
+    (dolist (elt fmt)
+      (unless (equal elt segment)
+        (setq result (nconc result (list elt)))
+        (when (eq elt 'mode-line-position)
+          (setq result (nconc result (list segment))
+                found t))))
+    (unless found
+      (setq result (nconc result (list segment))))
+    (setq-default mode-line-format result)))
 
 (defun my/mode-line-buffer-identification ()
   "Buffer name with one icon: extension for a file, major mode otherwise."
