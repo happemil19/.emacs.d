@@ -1,6 +1,6 @@
 # ~/.emacs.d
 
-Минимальная конфигурация Emacs: один `init.el`, GUI через user-демон и `emacsclient`.
+Минимальная конфигурация Emacs: `init.el` + `lisp/`, GUI через user-демон и `emacsclient`.
 
 Краткая шпаргалка: [mini-README.md](mini-README.md).
 
@@ -99,7 +99,11 @@ systemctl --user start emacs.service
 ## Структура
 
 ```
-init.el                 — вся конфигурация
+init.el                 — bootstrap, speechd, vterm, org, keys
+lisp/ui.el              — theme, mode-line, frames, ediff
+lisp/langs.el           — .env, docker, pico8, markdown, go/python, eglot
+lisp/git.el             — magit, projects, vertico/consult, diff-hl
+lisp/desktop.el         — session restore (emacsclient/daemon)
 bin/                    — install-скрипты, precheck
 desktop/                — ярлыки для меню приложений (≠ .emacs.desktop)
 systemd/user/           — emacs.service и drop-in

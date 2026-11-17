@@ -1,6 +1,6 @@
 # ~/.emacs.d — кратко
 
-Минимальный Emacs: демон + `emacsclient -c`. Вся конфигурация в `init.el`.
+Минимальный Emacs: демон + `emacsclient -c`. Конфиг: `init.el` + `lisp/*.el`.
 
 ## Быстрый старт
 
@@ -28,7 +28,7 @@ emacsclient -c FILE                     # открыть файл
 # Полный перезапуск daemon (новый init.el, desktop сохранится и восстановится):
 systemctl --user restart emacs && emacsclient -c
 
-# Только подтянуть init.el, daemon не трогать (C-c C-c в init.el то же самое):
+# Только подтянуть init (и lisp/), daemon не трогать (C-c C-c в init.el то же):
 emacsclient -e '(load user-init-file t t)'
 ```
 
