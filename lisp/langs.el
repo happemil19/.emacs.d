@@ -35,6 +35,29 @@
 
 (require 'tramp-container)
 
+;; TRAMP over VPN: a blackholed TCP (VPN drop) freezes the whole UI until SSH
+;; dies.  ServerAlive fails the multiplexed control socket quickly; ConnectTimeout
+;; bounds new handshakes.  After a hang: M-x my/tramp-flush, or kill the stuck
+;; `ssh … tramp.%C …' child of the Emacs daemon.
+(with-eval-after-load 'tramp
+  (setq tramp-connection-timeout 15)
+  (setq tramp-ssh-controlmaster-options
+        (concat "-o ControlMaster=auto "
+                "-o ControlPath=tramp.%%C "
+                "-o ControlPersist=no "
+                "-o ServerAliveInterval=5 "
+                "-o ServerAliveCountMax=2 "
+                "-o ConnectTimeout=10")))
+
+(defun my/tramp-flush ()
+  "Drop all Tramp connections and related buffers (after VPN drop / hang)."
+  (interactive)
+  (when (fboundp 'tramp-cleanup-all-connections)
+    (tramp-cleanup-all-connections))
+  (when (fboundp 'tramp-cleanup-all-buffers)
+    (tramp-cleanup-all-buffers))
+  (message "Tramp: connections flushed"))
+
 ;; PICO-8: .p8 cartridges (Kaali/pico8-mode + porcow/shanecelis/broquaint patches).
 (my/ensure-package 'lua-mode)
 (add-to-list 'load-path (expand-file-name "pico8-mode" user-emacs-directory))
@@ -150,17 +173,14 @@ See `my/markdown-browser-preview-format'; C-u inverts the choice."
     (setenv "PATH" (concat go-bin path-separator (getenv "PATH")))))
 
 (defun my/pylsp-executable ()
-  "Return real pylsp binary, not a pyenv shim with local .python-version."
-  (let* ((pyenv-root (or (getenv "PYENV_ROOT")
-                         (expand-file-name "~/.pyenv")))
-         (candidates
-          (list (expand-file-name "versions/3.14-dev/envs/global-venv/bin/pylsp"
-                                  pyenv-root)
-                (expand-file-name "versions/global-venv/bin/pylsp" pyenv-root)
-                (expand-file-name "~/.local/bin/pylsp"))))
-    (or (seq-find #'file-executable-p candidates)
-        (let ((default-directory (getenv "HOME")))
-          (executable-find "pylsp")))))
+  "Return pylsp: `uv tool install` (~/.local/bin) first, then PATH.
+
+Look up from HOME so a project `.python-version` cannot redirect through
+a leftover pyenv shim."
+  (or (let ((p (expand-file-name "pylsp" "~/.local/bin")))
+        (and (file-executable-p p) p))
+      (let ((default-directory (expand-file-name "~")))
+        (executable-find "pylsp"))))
 
 (defun my/pyright-executable ()
   "Return pyright language-server binary, if installed."
@@ -324,16 +344,21 @@ race `eglot--connect' and trip \"Selecting deleted buffer\"."
     (message "Python LSP → %s (was %s)" next prev)))
 
 (defun my/eglot-server-available-p ()
-  "Non-nil when a language server for the current major mode exists."
-  (cond
-   ((derived-mode-p 'python-mode 'python-ts-mode)
-    (my/python-lsp-contact))
-   ((derived-mode-p 'c-mode 'c++-mode 'c-ts-mode 'c++-ts-mode)
-    (let ((default-directory (getenv "HOME")))
-      (or (executable-find "clangd")
-          (executable-find "ccls"))))
-   ((derived-mode-p 'go-mode 'go-ts-mode)
-    (my/gopls-executable))))
+  "Non-nil when a language server for the current major mode exists.
+
+Skip TRAMP/remote buffers: Eglot would start the (local) LSP contact on
+the remote host, where those binaries usually are missing → \"server died\"."
+  (and buffer-file-name
+       (not (file-remote-p buffer-file-name))
+       (cond
+        ((derived-mode-p 'python-mode 'python-ts-mode)
+         (my/python-lsp-contact))
+        ((derived-mode-p 'c-mode 'c++-mode 'c-ts-mode 'c++-ts-mode)
+         (let ((default-directory (expand-file-name "~")))
+           (or (executable-find "clangd")
+               (executable-find "ccls"))))
+        ((derived-mode-p 'go-mode 'go-ts-mode)
+         (my/gopls-executable)))))
 
 (defun my/eglot-ensure ()
   "Start Eglot when a language server for this buffer is available.
